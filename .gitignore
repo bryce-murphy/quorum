@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment / secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Agent session scratch (ephemeral; not canonical — canonical state lives in .quorum/ committed)
+.quorum/scratch/
+.quorum/cache/
+*.session.tmp
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Coverage / test
+coverage/
+.nyc_output/
+
+# Local data-store adapter artifacts (when SQLite default is used for dev)
+*.sqlite
+*.sqlite3
+*.db
