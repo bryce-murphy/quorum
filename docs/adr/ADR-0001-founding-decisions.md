@@ -5,6 +5,7 @@
 - **Context**: project inception (Quorum bootstrap, successor to AMAS)
 - **Supersedes**: none
 - **Superseded by**: none
+- **Amended by**: ADR-0002 (Decision 4 — clarifies that the skill interface shape joins the open-contract surface; the dependency guarantee is unchanged)
 
 ## Status
 

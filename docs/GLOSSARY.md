@@ -45,3 +45,18 @@ A central lesson from the predecessor (AMAS) is that an undefined private vocabu
 - **Fail closed / fail open** — safety-critical checks block on failure (closed); documentation-niceties allow on failure (open).
 - **External-evidence bar** — a discipline promotes to canonical only on evidence from outside the pipeline that produced it (principle 10).
 - **Delete-by-default** — every discipline carries a sunset trigger and is retired when it stops catching defects (principle 11).
+
+## Architecture (ADR-0002 / ADR-0003)
+
+- **Layer (L0–L4)** — Quorum's five-layer structure, split on the determinism line: **L0 Contracts** (schemas + protocol + skill I/O shape), **L1 Kernel** (deterministic verifier library + CLI), **L2 Gate** (the GitHub Action; the only layer that can block a merge), **L3 Skills** (agent participation packs; advisory only), **L4 Rationale** (principles, ADRs, docs).
+- **Determinism line** — the boundary that decides what may gate: deterministic code may block a merge; an LLM agent may only propose, build, or review. The packaging boundary and the enforcement boundary are the same line.
+- **Can-it-block-a-merge test** — the discriminator used to place each capability in a layer: enforcement lives only where deterministic code can gate.
+- **Tier floor** — the minimum risk tier a diff is forced into by deterministic path rules, regardless of the tier an agent proposed; the Gate takes `max(proposed, floor)` so a high-blast-radius change cannot be re-graded downward.
+- **Strict mode / salvage mode** — the Gate's two operating modes. *Strict*: structured claims are required at the task's tier and missing/failed claims fail closed. *Salvage*: no claims file is required; the kernel mines prose for action-claims and reports advisory results (fail open). Strict needs L3 skills or a disciplined agent; salvage works with neither.
+- **Claim transport** — how claims reach the Gate: a committed append-only file `.quorum/claims/<task-id>.jsonl` (per-task files avoid concurrent-writer merge conflicts), with a fenced `quorum-claims` block in the PR body as a secondary source.
+- **App-as-identity** — using a GitHub App only to mint short-lived, per-agent-scoped tokens from inside Actions runners (least-privilege identity, no personal access tokens), with **no hosted service**. Distinct from a **hosted App** (a webhook receiver / low-latency push service), which is a later opt-in upgrade.
+- **Earned autonomy / automatic demotion** — an agent unlocks a higher autonomy tier only after N defect-free instrumented cycles at that grade, and is dropped one tier automatically when a post-merge defect is attributed to an auto-merged change.
+- **Circuit breaker** — a deterministic halt that parks an unattended run for the human on a failed verification, an over-long fix loop, a mid-flight tier escalation, or any contact with enforcement machinery.
+- **Untrusted-text quarantine** — the rule that an agent reading untrusted content never holds write access in the same context; it summarizes into a structured task file, and only that reaches write-capable agents (the operational form of principle 12 under autonomy).
+- **Morning digest** — the single batched human-gate surface summarizing an unattended run (merged / queued / blocked + budget spent), rendered in the forge, sourced from the claim ledger.
+- **Off-ramp artifact** — the standalone L1 kernel + CLI, which keeps working with no forge and no Quorum process, so an adopter who stops using Quorum keeps a usable verifier and their artifacts.

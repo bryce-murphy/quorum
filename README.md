@@ -2,7 +2,7 @@
 
 **A multi-agent software-delivery framework where independent AI agents propose, review, and red-team work — and a human holds merge authority — coordinating through the repository instead of a human clipboard.**
 
-> **Status: bootstrap.** This repository is scaffolded but not yet built. The architecture is being specified (see [`docs/SPEC-HANDOFF.md`](docs/SPEC-HANDOFF.md)); the founding decisions are recorded in [`docs/adr/ADR-0001-founding-decisions.md`](docs/adr/ADR-0001-founding-decisions.md). No tooling ships yet. This README describes the intended product so the spec session and early adopters share one picture; sections marked _(planned)_ are not yet implemented and say so honestly. Quorum's predecessor failed in part by describing enforcement it had not shipped — Quorum will not repeat that, starting with this README.
+> **Status: bootstrap — architecture ratified, build not yet started.** The architecture has been specified and ratified (see [`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) and the decisions in [`docs/adr/`](docs/adr/)); the founding decisions are in [`docs/adr/ADR-0001-founding-decisions.md`](docs/adr/ADR-0001-founding-decisions.md). **No tooling ships yet** — Phase 1 (the verification kernel) is the next work and arrives via pull requests. This README describes the intended product so adopters share one picture; sections marked _(planned)_ or _specified, not yet built_ are not implemented and say so honestly. Quorum's predecessor failed in part by describing enforcement it had not shipped — Quorum will not repeat that, starting with this README.
 
 ---
 
@@ -58,11 +58,11 @@ Professional roles, with beginner-facing labels in parentheses:
 |---|---|
 | Governance principles | drafted ([`docs/PRINCIPLES.md`](docs/PRINCIPLES.md)) |
 | Founding decisions (ADR-0001) | drafted |
-| Architecture + build spec | **pending Fable 5 spec session** ([`docs/SPEC-HANDOFF.md`](docs/SPEC-HANDOFF.md)) |
-| Artifact schemas | _placeholder_ ([`schemas/`](schemas/)) |
-| Verification kernel (claim verifier) | _not started — Phase 1 flagship_ |
-| Adapter interfaces | _not started_ |
-| CLI / forge App | _not started_ |
+| Architecture + build spec | **ratified** ([`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md); ADR-0002, ADR-0003). Original prompt retained as lineage ([`docs/SPEC-HANDOFF.md`](docs/SPEC-HANDOFF.md)) |
+| Artifact schemas | _specified, not yet built_ — Phase 1 M1 ([`schemas/`](schemas/), [`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) §3) |
+| Verification kernel (claim verifier) | _specified, not yet built — Phase 1 flagship_ ([`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) §4) |
+| Adapter interfaces | _specified, not yet built_ (`ForgeAdapter`, Phase 1 §4; others Phase 2) |
+| CLI / forge App | _specified, not yet built_ — App-as-identity in Phase 1 (ADR-0002) |
 | Worked example | _placeholder_ ([`examples/`](examples/)) |
 | Glossary | _stub_ ([`docs/GLOSSARY.md`](docs/GLOSSARY.md)) |
 
@@ -76,8 +76,9 @@ Professional roles, with beginner-facing labels in parentheses:
 ├── docs/
 │   ├── PRINCIPLES.md          # the 12 design principles (drafted)
 │   ├── GLOSSARY.md            # every term defined; generated-from-source eventually (stub)
-│   ├── SPEC-HANDOFF.md        # the architecture spec prompt for the Fable 5 session
-│   ├── adr/                   # architectural decision records (ADR-0001 drafted)
+│   ├── SPEC-PHASE-1.md        # the ratified architecture + Phase 1 build spec
+│   ├── SPEC-HANDOFF.md        # original spec prompt (retained as lineage)
+│   ├── adr/                   # ADR-0001 founding · ADR-0002 packaging · ADR-0003 autonomy
 │   ├── decisions/             # lightweight / temporary decisions (TMP-*)
 │   ├── handoffs/              # cross-agent / cross-session work-transition artifacts
 │   ├── reviews/               # per-PR review-context records
@@ -93,7 +94,7 @@ Professional roles, with beginner-facing labels in parentheses:
 
 ## Getting started
 
-Nothing to install yet. To follow or contribute to the design: read [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md), then [`docs/adr/ADR-0001-founding-decisions.md`](docs/adr/ADR-0001-founding-decisions.md), then [`docs/SPEC-HANDOFF.md`](docs/SPEC-HANDOFF.md). A quickstart lands when Phase 1 ships.
+Nothing to install yet. To follow or contribute to the design: read [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md), then [`docs/adr/ADR-0001-founding-decisions.md`](docs/adr/ADR-0001-founding-decisions.md), then the ratified architecture in [`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) (with [`ADR-0002`](docs/adr/ADR-0002-packaging-and-layered-architecture.md) and [`ADR-0003`](docs/adr/ADR-0003-autonomy-and-risk-tiers.md)). A quickstart lands when Phase 1 ships.
 
 ## Lineage
 
