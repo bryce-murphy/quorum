@@ -1,0 +1,50 @@
+import { describe, it, expect } from "vitest";
+import { extractClaims } from "../src/extract/index.js";
+
+const validClaim = JSON.stringify({
+  schema: "quorum.claim/v1",
+  id: "clm_000000000001",
+  task: "QRM-1",
+  agent: "builder",
+  type: "file_created",
+  subject: { path: "src/a.ts" },
+  stated_at: "2026-06-12T03:14:00Z",
+});
+
+describe("strict extraction", () => {
+  it("parses well-formed claims from a jsonl file", () => {
+    const res = extractClaims({ claimsJsonl: `${validClaim}\n` }, "strict");
+    expect(res.advisory).toBe(false);
+    expect(res.claims).toHaveLength(1);
+    expect(res.errors).toHaveLength(0);
+  });
+
+  it("reports a parse error on malformed JSON (so the Gate can fail closed)", () => {
+    const res = extractClaims({ claimsJsonl: `${validClaim}\n{ not json\n` }, "strict");
+    expect(res.claims).toHaveLength(1);
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]?.line).toBe(2);
+  });
+
+  it("reads a fenced quorum-claims block from the PR body", () => {
+    const body = ["intro", "```quorum-claims", `[${validClaim}]`, "```", "outro"].join("\n");
+    const res = extractClaims({ prBody: body }, "strict");
+    expect(res.claims).toHaveLength(1);
+  });
+});
+
+describe("salvage extraction", () => {
+  it("mines prose action-claims as advisory claims", () => {
+    const res = extractClaims(
+      {
+        prBody: "I created file src/new.ts and pushed commit a1b2c3d4e5f6 to the branch.",
+        task: "QRM-1",
+      },
+      "salvage",
+    );
+    expect(res.advisory).toBe(true);
+    const types = res.claims.map((c) => c.type).sort();
+    expect(types).toContain("file_created");
+    expect(types).toContain("commit_pushed");
+  });
+});

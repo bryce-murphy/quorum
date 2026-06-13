@@ -1,0 +1,15 @@
+{
+  "schema": "quorum.policy/v1",
+  "default_floor": "T0",
+  "rules": [
+    { "glob": ".github/workflows/**", "floor": "T3" },
+    { "glob": ".quorum/policy.json", "floor": "T3" },
+    { "glob": "packages/gate-action/**", "floor": "T3" },
+    { "glob": "**/schemas/**", "floor": "T3" },
+    { "glob": "schemas/**", "floor": "T3" },
+    { "glob": "**/package-lock.json", "floor": "T3" },
+    { "glob": "**/pnpm-lock.yaml", "floor": "T3" },
+    { "glob": "**/migrations/**", "floor": "T3" },
+    { "glob": "**/*.sql", "floor": "T3" }
+  ]
+}

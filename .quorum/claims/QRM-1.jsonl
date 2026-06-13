@@ -1,0 +1,14 @@
+{"schema":"quorum.claim/v1","id":"clm_000000000001","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":".gitattributes"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000002","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"tsconfig.base.json"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000003","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/contracts/src/claim.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000004","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/contracts/src/ledger.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000005","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/contracts/src/task-manifest.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000006","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/contracts/src/policy.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000007","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/contracts/schemas/claim.schema.json"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000008","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/kernel/src/verify/index.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000009","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/kernel/src/extract/index.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000010","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/kernel/src/ledger/build.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000011","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/kernel/src/tier/floor.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000012","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/kernel/src/forge/local-git.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000013","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/kernel/src/cli.ts"},"stated_at":"2026-06-13T10:00:00Z"}
+{"schema":"quorum.claim/v1","id":"clm_000000000014","task":"QRM-1","agent":"builder","type":"file_created","subject":{"path":"packages/kernel/test/amas.test.ts"},"stated_at":"2026-06-13T10:00:00Z"}

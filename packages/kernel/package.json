@@ -1,0 +1,28 @@
+{
+  "name": "@quorum/kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "L1 — Quorum deterministic verifier library + `quorum` CLI. Zero LLM calls.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "quorum": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.2",
+    "@quorum/contracts": "0.1.0"
+  }
+}

@@ -1,0 +1,514 @@
+{
+  "$ref": "#/definitions/Claim",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Claim": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "pattern": "^clm_[0-9A-Za-z]{10,40}$",
+              "type": "string"
+            },
+            "schema": {
+              "const": "quorum.claim/v1",
+              "type": "string"
+            },
+            "stated_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "task": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": {
+              "const": "file_created",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema",
+            "id",
+            "task",
+            "agent",
+            "stated_at",
+            "type",
+            "subject"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "pattern": "^clm_[0-9A-Za-z]{10,40}$",
+              "type": "string"
+            },
+            "schema": {
+              "const": "quorum.claim/v1",
+              "type": "string"
+            },
+            "stated_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "task": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": {
+              "const": "file_modified",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema",
+            "id",
+            "task",
+            "agent",
+            "stated_at",
+            "type",
+            "subject"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "pattern": "^clm_[0-9A-Za-z]{10,40}$",
+              "type": "string"
+            },
+            "schema": {
+              "const": "quorum.claim/v1",
+              "type": "string"
+            },
+            "stated_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "task": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": {
+              "const": "file_deleted",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema",
+            "id",
+            "task",
+            "agent",
+            "stated_at",
+            "type",
+            "subject"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "pattern": "^clm_[0-9A-Za-z]{10,40}$",
+              "type": "string"
+            },
+            "schema": {
+              "const": "quorum.claim/v1",
+              "type": "string"
+            },
+            "stated_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "sha": {
+                  "pattern": "^[0-9a-fA-F]{7,40}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "sha"
+              ],
+              "type": "object"
+            },
+            "task": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": {
+              "const": "commit_pushed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema",
+            "id",
+            "task",
+            "agent",
+            "stated_at",
+            "type",
+            "subject"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "pattern": "^clm_[0-9A-Za-z]{10,40}$",
+              "type": "string"
+            },
+            "schema": {
+              "const": "quorum.claim/v1",
+              "type": "string"
+            },
+            "stated_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "number": {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "number"
+              ],
+              "type": "object"
+            },
+            "task": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": {
+              "const": "pr_opened",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema",
+            "id",
+            "task",
+            "agent",
+            "stated_at",
+            "type",
+            "subject"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "pattern": "^clm_[0-9A-Za-z]{10,40}$",
+              "type": "string"
+            },
+            "schema": {
+              "const": "quorum.claim/v1",
+              "type": "string"
+            },
+            "stated_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "number": {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "number"
+              ],
+              "type": "object"
+            },
+            "task": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": {
+              "const": "issue_filed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema",
+            "id",
+            "task",
+            "agent",
+            "stated_at",
+            "type",
+            "subject"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "pattern": "^clm_[0-9A-Za-z]{10,40}$",
+              "type": "string"
+            },
+            "schema": {
+              "const": "quorum.claim/v1",
+              "type": "string"
+            },
+            "stated_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "pr": {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                "surface": {
+                  "enum": [
+                    "review",
+                    "issue_comment",
+                    "line_comment"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pr"
+              ],
+              "type": "object"
+            },
+            "task": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": {
+              "const": "review_posted",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema",
+            "id",
+            "task",
+            "agent",
+            "stated_at",
+            "type",
+            "subject"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "expected": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "id": {
+              "pattern": "^clm_[0-9A-Za-z]{10,40}$",
+              "type": "string"
+            },
+            "schema": {
+              "const": "quorum.claim/v1",
+              "type": "string"
+            },
+            "stated_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "subject": {
+              "additionalProperties": false,
+              "properties": {
+                "check_name": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "check_name"
+              ],
+              "type": "object"
+            },
+            "task": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": {
+              "const": "test_passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema",
+            "id",
+            "task",
+            "agent",
+            "stated_at",
+            "type",
+            "subject"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  }
+}

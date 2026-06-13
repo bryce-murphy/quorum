@@ -1,0 +1,38 @@
+[
+  {
+    "type": "file_created",
+    "regex": "\\b(?:created|added|wrote)\\s+(?:the\\s+)?(?:new\\s+)?file\\s+`?([^\\s`]+)`?",
+    "flags": "gi",
+    "subject": "path"
+  },
+  {
+    "type": "file_modified",
+    "regex": "\\b(?:modified|updated|edited|changed)\\s+(?:the\\s+)?file\\s+`?([^\\s`]+)`?",
+    "flags": "gi",
+    "subject": "path"
+  },
+  {
+    "type": "file_deleted",
+    "regex": "\\b(?:deleted|removed)\\s+(?:the\\s+)?file\\s+`?([^\\s`]+)`?",
+    "flags": "gi",
+    "subject": "path"
+  },
+  {
+    "type": "commit_pushed",
+    "regex": "\\b(?:pushed|committed)\\s+(?:commit\\s+)?`?([0-9a-f]{7,40})`?",
+    "flags": "gi",
+    "subject": "sha"
+  },
+  {
+    "type": "pr_opened",
+    "regex": "\\b(?:opened|raised)\\s+(?:a\\s+)?(?:PR|pull request)\\s+#?(\\d+)",
+    "flags": "gi",
+    "subject": "pr_number"
+  },
+  {
+    "type": "issue_filed",
+    "regex": "\\b(?:filed|opened)\\s+(?:an?\\s+)?issue\\s+#?(\\d+)",
+    "flags": "gi",
+    "subject": "issue_number"
+  }
+]
