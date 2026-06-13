@@ -143,7 +143,7 @@ Claims travel as a committed file on the PR branch: `.quorum/claims/<task-id>.js
   "acceptance": ["renders 3 fixture ledgers byte-identically"],
   "branch": "qrm-12-ledger-render",
   "state": "in_progress",              // planned|in_progress|handed_back|verified|merged|blocked
-  "agents": { "builder": "claude-code", "reviewer": "gpt-codex" }
+  "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
 }
 ```
 
@@ -219,9 +219,15 @@ HANDOFF: update .quorum/manifests/QRM-1.json state to handed_back; open PR to ma
 
 Reviewer direction (cross-family, e.g. GPT/Codex) ships with M2's hand-back; drafting it against a real diff beats drafting it speculatively.
 
-## 8. Open questions for the owner
+## 8. Agent assignments and remaining owner inputs
 
-1. **App registration**: creating the GitHub App identity (name suggestion: `quorum-gate`) requires your account — needed before M3, not before M1/M2. Say when.
-2. **Reviewer family**: confirm GPT/Codex as the Phase 1 cross-family Reviewer (matches AMAS lineage).
-3. **Repo home**: confirm `bryce-murphy/quorum`, public, as per bootstrap.
-4. **N for autonomy promotion** (default 10 defect-free cycles) — fine to defer to Phase 2 ratification.
+**Ratified (2026-06-12):**
+
+1. **Builder = `claude-opus-4-8`** via Claude Code. Claude Fable 5 was the originally-anticipated heavy-reasoning model but was withdrawn by Anthropic on 2026-06-12; Opus 4.8 is the strongest generally-available agentic-coding model and is the Builder of record for Phase 1.
+2. **Reviewer = `gpt-codex`** (OpenAI family) — confirmed. Builder (Anthropic) ≠ Reviewer (OpenAI) satisfies principle 7 (cross-family review).
+3. **Repo home = `bryce-murphy/quorum`**, public — confirmed and live, with `protect-main` ruleset active (PR required, force-push and deletion blocked, approvals 0 until the Reviewer Action ships).
+
+**Still open:**
+
+4. **App registration**: creating the GitHub App identity (name suggestion: `quorum-gate`) requires the owner's account — needed before M3, not before M1/M2. Say when.
+5. **N for autonomy promotion** (default 10 defect-free cycles) — fine to defer to Phase 2 ratification.
