@@ -132,3 +132,38 @@ describe.skipIf(!haveBuild)("quorum CLI", () => {
     expect(runCli(["validate", badFile], repo).status).toBe(1);
   });
 });
+
+// FIX 7 - an unresolvable merge-base must REFUSE to run (exit 2), never fall back
+// to HEAD and pass over an empty delta.
+describe.skipIf(!haveBuild)("quorum verify - merge-base resolution (FIX 7)", () => {
+  let repo: string;
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), "quorum-base-"));
+    git(["init", "-b", "trunk"], repo); // NO `main` branch exists
+    git(["config", "user.email", "t@t.test"], repo);
+    git(["config", "user.name", "Test"], repo);
+    mkdirSync(join(repo, "src"), { recursive: true });
+    writeFileSync(join(repo, "src/a.ts"), "hello\n");
+    mkdirSync(join(repo, ".quorum/claims"), { recursive: true });
+    mkdirSync(join(repo, ".quorum/manifests"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY);
+    writeFileSync(join(repo, ".quorum/manifests/QRM-T.json"), manifest("QRM-T"));
+    writeFileSync(
+      join(repo, ".quorum/claims/QRM-T.jsonl"),
+      `${claim({ type: "file_created", subject: { path: "src/a.ts" } })}\n`,
+    );
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "init"], repo);
+  });
+
+  it("exit 2: default base 'main' absent and no --base => refuse to run", () => {
+    const r = runCli(["verify", "--local", "--task", "QRM-T"], repo);
+    expect(r.status).toBe(2);
+  });
+
+  it("an explicit --base lets CI / the Gate supply the known base", () => {
+    const r = runCli(["verify", "--local", "--task", "QRM-T", "--base", "trunk"], repo);
+    expect(r.status).not.toBe(2); // resolves now; does not refuse
+  });
+});

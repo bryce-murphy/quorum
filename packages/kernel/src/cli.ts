@@ -112,7 +112,21 @@ async function cmdVerify(args: string[]): Promise<void> {
 
   // Repo state + tier floor.
   const head = "HEAD";
-  const mergeBase = (gitOut(["merge-base", "HEAD", "main"], cwd) ?? gitOut(["rev-parse", "HEAD"], cwd) ?? "HEAD").trim();
+  // FIX 7: resolve the merge-base or REFUSE to run. Falling back to HEAD would
+  // make the delta empty, which makes coverage trivially pass - a silent clean
+  // ledger over an unverified change, the same class as the unclaimed-paths bug.
+  const baseRef = flags["base"] ?? "main";
+  let mergeBase = gitOut(["merge-base", "HEAD", baseRef], cwd)?.trim();
+  if (!mergeBase && flags["base"]) {
+    // Explicit base given but no common ancestor: use it directly if it resolves.
+    mergeBase = gitOut(["rev-parse", "--verify", `${baseRef}^{commit}`], cwd)?.trim();
+  }
+  if (!mergeBase) {
+    fail(
+      `could not resolve merge-base against '${baseRef}'; pass an explicit base via --base <ref>`,
+      EXIT.protocol,
+    );
+  }
   const diffOut = gitOut(["diff", "--name-only", `${mergeBase}..${head}`], cwd) ?? "";
   const diffPaths = diffOut.split("\n").map((s) => s.trim()).filter(Boolean);
   const policy = loadPolicy(cwd);
