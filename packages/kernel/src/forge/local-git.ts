@@ -18,8 +18,11 @@ import {
 export interface LocalGitOptions {
   /** Repository working directory. Defaults to process.cwd(). */
   cwd?: string;
-  /** Ref treated as "head" for commit-reachability checks. Defaults to HEAD. */
+  /** Ref treated as "head" for commit-membership checks. Defaults to HEAD. */
   head?: string;
+  /** Merge-base ref. When set, commit_pushed requires membership in
+   *  mergeBase..head (in this branch's delta), not mere reachability (FIX 3). */
+  mergeBase?: string;
 }
 
 /**
@@ -31,10 +34,16 @@ export interface LocalGitOptions {
 export class LocalGitForge implements ForgeAdapter {
   private readonly cwd: string;
   private readonly head: string;
+  private readonly mergeBase: string | undefined;
 
   constructor(opts: LocalGitOptions = {}) {
     this.cwd = opts.cwd ?? process.cwd();
     this.head = opts.head ?? "HEAD";
+    this.mergeBase = opts.mergeBase;
+  }
+
+  private isAncestor(commit: string, of: string): boolean {
+    return this.git(["merge-base", "--is-ancestor", commit, of]) !== null;
   }
 
   private git(args: string[]): string | null {
@@ -56,6 +65,10 @@ export class LocalGitForge implements ForgeAdapter {
   }
 
   async getFile(ref: string, path: string): Promise<ForgeResponse<FileContent>> {
+    // FIX 2: require an actual blob. A tree (directory) at this path is not file
+    // content and must not verify a file claim.
+    const objType = this.git(["cat-file", "-t", `${ref}:${path}`]);
+    if (objType === null || objType.trim() !== "blob") return absent();
     const bytes = this.gitBytes(["cat-file", "-p", `${ref}:${path}`]);
     if (bytes === null) return absent();
     // Hash the raw bytes; expose a UTF-8 view for display only.
@@ -65,9 +78,14 @@ export class LocalGitForge implements ForgeAdapter {
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {
     const exists = this.git(["cat-file", "-e", `${sha}^{commit}`]) !== null;
     if (!exists) return absent();
-    // Resolvable; require reachability from head (SPEC 3.1).
-    const reachable = this.git(["merge-base", "--is-ancestor", sha, this.head]) !== null;
-    return reachable ? ok({ sha }) : absent();
+    // FIX 3: "pushed" means the commit is in THIS branch's delta, not merely
+    // reachable from head. Membership in mergeBase..head = reachable from head
+    // AND not an ancestor of mergeBase. (An ancestor/base commit fails.)
+    if (!this.isAncestor(sha, this.head)) return absent();
+    if (this.mergeBase !== undefined && this.isAncestor(sha, this.mergeBase)) {
+      return absent();
+    }
+    return ok({ sha });
   }
 
   async getPR(): Promise<ForgeResponse<PrInfo>> {

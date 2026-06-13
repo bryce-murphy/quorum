@@ -7,11 +7,32 @@ import { mkClaim } from "./fixtures/amas.js";
 const ctx = { head: "HEAD", mergeBase: "BASE" };
 
 describe("file claims", () => {
-  it("file_created verifies when present; records sha256", async () => {
+  it("file_created without a hash is verified_exists (existence only), not verified", async () => {
     const forge = new MemoryForge({ files: { HEAD: { "a.ts": "x\n" } } });
     const r = await verifyClaim(mkClaim({ type: "file_created", subject: { path: "a.ts" } }), forge, ctx);
-    expect(r.status).toBe("verified");
+    expect(r.status).toBe("verified_exists");
+    expect(r.evidence["content_verified"]).toBe(false);
     expect(r.evidence["sha256"]).toBe(sha256("x\n"));
+  });
+
+  it("file_created WITH a matching hash is fully verified", async () => {
+    const forge = new MemoryForge({ files: { HEAD: { "a.ts": "x\n" } } });
+    const claim = mkClaim({
+      type: "file_created",
+      subject: { path: "a.ts" },
+      expected: { sha256: sha256("x\n") },
+    });
+    expect((await verifyClaim(claim, forge, ctx)).status).toBe("verified");
+  });
+
+  it("file_created with a WRONG hash fails", async () => {
+    const forge = new MemoryForge({ files: { HEAD: { "a.ts": "x\n" } } });
+    const claim = mkClaim({
+      type: "file_created",
+      subject: { path: "a.ts" },
+      expected: { sha256: sha256("DIFFERENT\n") },
+    });
+    expect((await verifyClaim(claim, forge, ctx)).status).toBe("failed");
   });
 
   it("file_modified fails when unchanged from merge-base", async () => {
@@ -21,10 +42,10 @@ describe("file claims", () => {
     expect(r.evidence["reason"]).toBe("unchanged_from_merge_base");
   });
 
-  it("file_modified verifies when content differs from merge-base", async () => {
+  it("file_modified (no hash) differing from merge-base is verified_exists", async () => {
     const forge = new MemoryForge({ files: { HEAD: { "a.ts": "y\n" }, BASE: { "a.ts": "x\n" } } });
     const r = await verifyClaim(mkClaim({ type: "file_modified", subject: { path: "a.ts" } }), forge, ctx);
-    expect(r.status).toBe("verified");
+    expect(r.status).toBe("verified_exists");
   });
 
   it("file_deleted verifies when absent at head but present at base", async () => {

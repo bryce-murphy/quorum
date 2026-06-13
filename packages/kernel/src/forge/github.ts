@@ -20,8 +20,11 @@ export interface GitHubForgeOptions {
   token: string;
   owner: string;
   repo: string;
-  /** Head sha/ref used for commit-reachability checks. */
+  /** Head sha/ref used for commit-membership checks. */
   head: string;
+  /** Merge-base ref. When set, commit_pushed requires membership in
+   *  mergeBase..head (this branch's delta), not mere reachability (FIX 3). */
+  mergeBase?: string;
   octokit?: Octokit;
 }
 
@@ -39,12 +42,14 @@ export class GitHubForge implements ForgeAdapter {
   private readonly owner: string;
   private readonly repo: string;
   private readonly head: string;
+  private readonly mergeBase: string | undefined;
 
   constructor(opts: GitHubForgeOptions) {
     this.api = opts.octokit ?? new Octokit({ auth: opts.token });
     this.owner = opts.owner;
     this.repo = opts.repo;
     this.head = opts.head;
+    this.mergeBase = opts.mergeBase;
   }
 
   async getFile(ref: string, path: string): Promise<ForgeResponse<FileContent>> {
@@ -70,7 +75,25 @@ export class GitHubForge implements ForgeAdapter {
       if (isNotFound(err)) return absent();
       throw err;
     }
-    // Resolvable; confirm reachability from head (SPEC 3.1).
+    // FIX 3: require membership in this branch's delta (mergeBase..head), not
+    // mere reachability - an ancestor/base commit was not "pushed" here.
+    if (this.mergeBase !== undefined) {
+      try {
+        const res = await this.api.repos.compareCommitsWithBasehead({
+          owner: this.owner,
+          repo: this.repo,
+          basehead: `${this.mergeBase}...${this.head}`,
+        });
+        const deltaShas = res.data.commits.map((c) => c.sha);
+        return deltaShas.some((full) => full === sha || full.startsWith(sha))
+          ? ok({ sha })
+          : absent();
+      } catch (err) {
+        if (isNotFound(err)) return absent();
+        throw err;
+      }
+    }
+    // No merge-base configured: fall back to reachability from head.
     const cmp = await this.compare(sha, this.head);
     if (cmp.kind === "ok" && (cmp.value.status === "ahead" || cmp.value.status === "identical")) {
       return ok({ sha });

@@ -10,6 +10,10 @@ interface Outcome {
 }
 
 const verified = (evidence: Evidence = {}): Outcome => ({ status: "verified", evidence });
+const verifiedExists = (evidence: Evidence = {}): Outcome => ({
+  status: "verified_exists",
+  evidence: { content_verified: false, note: "existence only; content unverified", ...evidence },
+});
 const failed = (evidence: Evidence = {}): Outcome => ({ status: "failed", evidence });
 const disclosed = (evidence: Evidence = {}): Outcome => ({
   status: "unverifiable_disclosed",
@@ -225,7 +229,9 @@ function matchExpectedHash(
   base: Evidence,
 ): Outcome {
   const expected = claim.expected?.sha256;
-  if (!expected) return verified({ ...base, sha256: actualSha256 });
+  // FIX 5: without an expected hash we can confirm the file exists/changed but
+  // NOT that its content is what was intended. Report the weaker, honest status.
+  if (!expected) return verifiedExists({ ...base, sha256: actualSha256 });
   if (expected.toLowerCase() === actualSha256.toLowerCase()) {
     return verified({ ...base, sha256: actualSha256 });
   }

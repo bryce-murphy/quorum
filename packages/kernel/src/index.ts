@@ -8,6 +8,7 @@ export { verifyClaim } from "./verify/index.js";
 export { verifyClaims } from "./run.js";
 
 export { buildLedger, computeVerdict } from "./ledger/build.js";
+export { applyStrictFailClosed, computeUncoveredPaths } from "./gate.js";
 export { renderLedger, renderHeadline } from "./ledger/render.js";
 
 export { computeTierFloor } from "./tier/floor.js";

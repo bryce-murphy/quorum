@@ -31,6 +31,12 @@ describe("strict extraction", () => {
     const res = extractClaims({ prBody: body }, "strict");
     expect(res.claims).toHaveLength(1);
   });
+
+  // FIX 6 - a duplicate id would let one verified result cover two assertions.
+  it("reports a protocol error on duplicate claim ids", () => {
+    const res = extractClaims({ claimsJsonl: `${validClaim}\n${validClaim}\n` }, "strict");
+    expect(res.errors.some((e) => /duplicate claim id/.test(e.message))).toBe(true);
+  });
 });
 
 describe("salvage extraction", () => {

@@ -23,11 +23,16 @@
             "verified": {
               "minimum": 0,
               "type": "integer"
+            },
+            "verified_exists": {
+              "minimum": 0,
+              "type": "integer"
             }
           },
           "required": [
             "total",
             "verified",
+            "verified_exists",
             "failed",
             "unverifiable_disclosed"
           ],
@@ -57,6 +62,7 @@
               "status": {
                 "enum": [
                   "verified",
+                  "verified_exists",
                   "failed",
                   "unverifiable_disclosed"
                 ],
@@ -103,6 +109,12 @@
           ],
           "type": "string"
         },
+        "uncovered_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "verdict": {
           "enum": [
             "pass",
@@ -118,6 +130,7 @@
         "mode",
         "results",
         "counts",
+        "uncovered_paths",
         "tier_effective",
         "verdict"
       ],

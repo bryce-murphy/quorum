@@ -16,6 +16,7 @@ import { renderLedger } from "./ledger/render.js";
 import { computeTierFloor } from "./tier/floor.js";
 import { validateArtifact } from "./validate.js";
 import { LocalGitForge } from "./forge/local-git.js";
+import { applyStrictFailClosed, computeUncoveredPaths } from "./gate.js";
 
 /** Exit codes (SPEC 4): 0 pass - 1 claim failure - 2 protocol/parse failure. */
 const EXIT = { pass: 0, claimFailure: 1, protocol: 2 } as const;
@@ -117,9 +118,21 @@ async function cmdVerify(args: string[]): Promise<void> {
   const policy = loadPolicy(cwd);
   const tierEffective = maxTier(tierProposed, computeTierFloor(diffPaths, policy));
 
-  const forge = new LocalGitForge({ cwd, head });
-  const results = await verifyClaims(extracted.claims, forge, { head, mergeBase, branch });
-  const ledger = buildLedger(results, { task, head, mode, tier_effective: tierEffective });
+  const forge = new LocalGitForge({ cwd, head, mergeBase });
+  const rawResults = await verifyClaims(extracted.claims, forge, { head, mergeBase, branch });
+  // FIX 4: fail closed on unverifiable forge-only claims in strict mode.
+  const results = applyStrictFailClosed(rawResults, mode);
+  // FIX 1: every changed path must be covered by a verified claim or exemption.
+  const uncovered = computeUncoveredPaths(extracted.claims, results, diffPaths, policy.exempt_paths ?? []);
+
+  const ledger = buildLedger(results, {
+    task,
+    head,
+    mode,
+    tier_effective: tierEffective,
+    uncovered_paths: uncovered,
+    diff_non_empty: diffPaths.length > 0,
+  });
 
   process.stdout.write(`${renderLedger(ledger)}\n`);
   process.exit(ledger.verdict === "fail" ? EXIT.claimFailure : EXIT.pass);

@@ -19,11 +19,19 @@ export function extractClaims(sources: ExtractSources, mode: "strict" | "salvage
     const fromBody = sources.prBody
       ? parseFencedClaims(sources.prBody)
       : { claims: [], errors: [] };
-    return {
-      claims: [...fromFile.claims, ...fromBody.claims],
-      advisory: false,
-      errors: [...fromFile.errors, ...fromBody.errors],
-    };
+    const claims = [...fromFile.claims, ...fromBody.claims];
+    const errors = [...fromFile.errors, ...fromBody.errors];
+
+    // FIX 6: a duplicate claim id is a protocol error - it would let one verified
+    // result be reused to cover two assertions (double-verify). Reject it.
+    const seen = new Set<string>();
+    for (const c of claims) {
+      if (seen.has(c.id)) {
+        errors.push({ source: "claims", message: `duplicate claim id: ${c.id}` });
+      }
+      seen.add(c.id);
+    }
+    return { claims, advisory: false, errors };
   }
 
   const texts = [sources.prBody ?? "", ...(sources.commitMessages ?? [])];

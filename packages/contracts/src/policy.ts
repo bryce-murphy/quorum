@@ -19,6 +19,10 @@ export const PolicySchema = z
     // Floor applied when no rule matches (SPEC 1.2: "everything else -> T0").
     default_floor: TierSchema,
     rules: z.array(PolicyRuleSchema),
+    // Globs for changed paths that need no covering claim (e.g. generated
+    // output). Diff-coverage (FIX 1) treats a path matching any of these as
+    // covered. Optional; defaults to none.
+    exempt_paths: z.array(z.string().min(1)).optional(),
   })
   .strict();
 
