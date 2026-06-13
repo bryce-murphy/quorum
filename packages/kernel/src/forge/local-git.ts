@@ -38,10 +38,16 @@ export class LocalGitForge implements ForgeAdapter {
   }
 
   private git(args: string[]): string | null {
+    const buf = this.gitBytes(args);
+    return buf === null ? null : buf.toString("utf8");
+  }
+
+  /** Run git capturing stdout as raw bytes (no encoding) - required for faithful
+   *  content hashing of binary / invalid-UTF-8 blobs. */
+  private gitBytes(args: string[]): Buffer | null {
     try {
       return execFileSync("git", args, {
         cwd: this.cwd,
-        encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       });
     } catch {
@@ -50,9 +56,10 @@ export class LocalGitForge implements ForgeAdapter {
   }
 
   async getFile(ref: string, path: string): Promise<ForgeResponse<FileContent>> {
-    const content = this.git(["cat-file", "-p", `${ref}:${path}`]);
-    if (content === null) return absent();
-    return ok({ content, sha256: sha256(content) });
+    const bytes = this.gitBytes(["cat-file", "-p", `${ref}:${path}`]);
+    if (bytes === null) return absent();
+    // Hash the raw bytes; expose a UTF-8 view for display only.
+    return ok({ content: bytes.toString("utf8"), sha256: sha256(bytes) });
   }
 
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {

@@ -11,7 +11,13 @@ export { buildLedger, computeVerdict } from "./ledger/build.js";
 export { renderLedger, renderHeadline } from "./ledger/render.js";
 
 export { computeTierFloor } from "./tier/floor.js";
-export { globMatches, globToRegExp } from "./tier/glob.js";
+export {
+  globMatches,
+  globToRegExp,
+  normalizePath,
+  normalizeGlobSeparators,
+  PathNormalizationError,
+} from "./tier/glob.js";
 
 export { validateArtifact } from "./validate.js";
 export type { ValidateResult } from "./validate.js";

@@ -19,7 +19,9 @@ const PATTERNS: Pattern[] = JSON.parse(
 function buildSubject(kind: Pattern["subject"], captured: string): Record<string, unknown> {
   switch (kind) {
     case "path":
-      return { path: captured };
+      // Strip trailing sentence punctuation so "src/new.ts." -> "src/new.ts".
+      // Slashes are preserved (directory paths).
+      return { path: captured.replace(/[.,;:!?)\]]+$/, "") };
     case "sha":
       return { sha: captured };
     case "pr_number":
@@ -30,13 +32,26 @@ function buildSubject(kind: Pattern["subject"], captured: string): Record<string
 }
 
 /**
+ * Remove regions that look like claims but are not prose assertions: fenced code
+ * blocks (```...```) and blockquoted lines (`> ...`). Quoting untrusted text or
+ * showing an example must not register as a real action-claim (false positive).
+ */
+function stripNonProse(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .split("\n")
+    .filter((line) => !/^\s*>/.test(line))
+    .join("\n");
+}
+
+/**
  * Salvage miner: scan untrusted prose (PR body + commit messages) for action
  * claims. Results are advisory - they let the Gate emit a ledger even when no
  * disciplined claims file exists. Mined claims are validated against the schema
  * and silently dropped if they don't conform.
  */
 export function mineClaims(texts: readonly string[], task: string): Claim[] {
-  const blob = texts.join("\n");
+  const blob = texts.map(stripNonProse).join("\n");
   const claims: Claim[] = [];
   const stated_at = new Date().toISOString();
   let seq = 0;

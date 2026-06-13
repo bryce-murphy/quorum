@@ -54,8 +54,9 @@ export class GitHubForge implements ForgeAdapter {
       if (Array.isArray(data) || data.type !== "file" || typeof data.content !== "string") {
         return absent();
       }
-      const content = Buffer.from(data.content, "base64").toString("utf8");
-      return ok({ content, sha256: sha256(content) });
+      // Hash the decoded RAW bytes; expose a UTF-8 view for display only.
+      const bytes = Buffer.from(data.content, "base64");
+      return ok({ content: bytes.toString("utf8"), sha256: sha256(bytes) });
     } catch (err) {
       if (isNotFound(err)) return absent();
       throw err;
@@ -99,32 +100,53 @@ export class GitHubForge implements ForgeAdapter {
 
   async getReviewsAllEndpoints(pr: number): Promise<ForgeResponse<readonly ReviewItem[]>> {
     try {
+      // Paginate ALL THREE surfaces - one default page is not "all endpoints".
       const [reviews, issueComments, lineComments] = await Promise.all([
-        this.api.pulls.listReviews({ owner: this.owner, repo: this.repo, pull_number: pr }),
-        this.api.issues.listComments({ owner: this.owner, repo: this.repo, issue_number: pr }),
-        this.api.pulls.listReviewComments({ owner: this.owner, repo: this.repo, pull_number: pr }),
+        this.api.paginate(this.api.pulls.listReviews, {
+          owner: this.owner,
+          repo: this.repo,
+          pull_number: pr,
+          per_page: 100,
+        }),
+        this.api.paginate(this.api.issues.listComments, {
+          owner: this.owner,
+          repo: this.repo,
+          issue_number: pr,
+          per_page: 100,
+        }),
+        this.api.paginate(this.api.pulls.listReviewComments, {
+          owner: this.owner,
+          repo: this.repo,
+          pull_number: pr,
+          per_page: 100,
+        }),
       ]);
-      const merged = mergeReviewEndpoints(
-        reviews.data.map((r) => ({
+      const reviewItems: ReviewItem[] = reviews
+        // A formal review with no submitted_at (e.g. a PENDING review) has not
+        // been posted. Drop it - never coerce to "" and let it count as evidence
+        // or pollute the (submitted_at, id) tie-break.
+        .filter((r): r is typeof r & { submitted_at: string } =>
+          typeof r.submitted_at === "string" && r.submitted_at !== "",
+        )
+        .map((r) => ({
           id: `review:${r.id}`,
           surface: "review" as const,
           author: r.user?.login ?? "",
-          submitted_at: r.submitted_at ?? "",
-        })),
-        issueComments.data.map((c) => ({
-          id: `issue_comment:${c.id}`,
-          surface: "issue_comment" as const,
-          author: c.user?.login ?? "",
-          submitted_at: c.created_at,
-        })),
-        lineComments.data.map((c) => ({
-          id: `line_comment:${c.id}`,
-          surface: "line_comment" as const,
-          author: c.user?.login ?? "",
-          submitted_at: c.created_at,
-        })),
-      );
-      return ok(merged);
+          submitted_at: r.submitted_at,
+        }));
+      const issueItems: ReviewItem[] = issueComments.map((c) => ({
+        id: `issue_comment:${c.id}`,
+        surface: "issue_comment" as const,
+        author: c.user?.login ?? "",
+        submitted_at: c.created_at,
+      }));
+      const lineItems: ReviewItem[] = lineComments.map((c) => ({
+        id: `line_comment:${c.id}`,
+        surface: "line_comment" as const,
+        author: c.user?.login ?? "",
+        submitted_at: c.created_at,
+      }));
+      return ok(mergeReviewEndpoints(reviewItems, issueItems, lineItems));
     } catch (err) {
       if (isNotFound(err)) return absent();
       throw err;

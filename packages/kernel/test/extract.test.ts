@@ -47,4 +47,23 @@ describe("salvage extraction", () => {
     expect(types).toContain("file_created");
     expect(types).toContain("commit_pushed");
   });
+
+  // FIX D - reduce false positives on the advisory path.
+  it("strips trailing sentence punctuation from path captures", () => {
+    const res = extractClaims({ prBody: "I created file src/new.ts.", task: "QRM-1" }, "salvage");
+    const created = res.claims.find((c) => c.type === "file_created");
+    expect(created?.subject).toEqual({ path: "src/new.ts" });
+  });
+
+  it("does not mine claim-like text inside a fenced code block", () => {
+    const body = ["Here is an example, do not action it:", "```", "I created file src/ghost.ts", "```"].join("\n");
+    const res = extractClaims({ prBody: body, task: "QRM-1" }, "salvage");
+    expect(res.claims).toHaveLength(0);
+  });
+
+  it("does not mine claim-like text inside a blockquote", () => {
+    const body = "> I created file src/quoted.ts\nreal prose with no claim";
+    const res = extractClaims({ prBody: body, task: "QRM-1" }, "salvage");
+    expect(res.claims).toHaveLength(0);
+  });
 });

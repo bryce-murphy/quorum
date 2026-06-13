@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Policy } from "@quorum/contracts";
 import { computeTierFloor } from "../src/tier/floor.js";
-import { globMatches } from "../src/tier/glob.js";
+import { globMatches, normalizePath, PathNormalizationError } from "../src/tier/glob.js";
 
 describe("globMatches", () => {
   it("** crosses directory separators", () => {
@@ -53,5 +53,52 @@ describe("computeTierFloor", () => {
 
   it("takes the max over many paths", () => {
     expect(computeTierFloor(["docs/x.md", "schemas/policy.schema.json", "src/y.ts"], policy)).toBe("T3");
+  });
+});
+
+// FIX A - the floor is a security control: equivalent path spellings must not
+// evade a rule, and hostile paths are a hard error, never a default-floor pass.
+describe("normalizePath", () => {
+  it("canonicalizes separators, leading ./, and doubled slashes", () => {
+    expect(normalizePath(".\\schemas\\claim.schema.json")).toBe("schemas/claim.schema.json");
+    expect(normalizePath("./.github/workflows/deploy.yml")).toBe(".github/workflows/deploy.yml");
+    expect(normalizePath("schemas//a///b.json")).toBe("schemas/a/b.json");
+    expect(normalizePath("././src/a.ts")).toBe("src/a.ts");
+  });
+
+  it("hard-rejects absolute paths, traversal, and NUL bytes", () => {
+    for (const bad of [
+      "/etc/passwd",
+      "C:\\Windows\\system32",
+      "C:/Windows/system32",
+      "\\\\server\\share\\x",
+      "../../etc/passwd",
+      "schemas/../../../etc/passwd",
+      `schemas/${String.fromCharCode(0)}x.json`,
+    ]) {
+      expect(() => normalizePath(bad)).toThrow(PathNormalizationError);
+    }
+  });
+});
+
+describe("computeTierFloor - floor-evasion resistance (FIX A)", () => {
+  it("resolves equivalent spellings of enforcement paths to T3", () => {
+    for (const path of [
+      "./.github/workflows/deploy.yml",
+      ".\\schemas\\claim.schema.json",
+      "packages//gate-action///run.ts",
+      "deep/nested/dir/package-lock.json",
+    ]) {
+      expect(computeTierFloor([path], policy)).toBe("T3");
+    }
+  });
+
+  it("matches case-insensitively so case is not an evasion vector", () => {
+    expect(computeTierFloor([".GitHub/Workflows/Deploy.yml"], policy)).toBe("T3");
+    expect(computeTierFloor(["Schemas/Claim.Schema.json"], policy)).toBe("T3");
+  });
+
+  it("throws (does not silently fall through) on a traversal path", () => {
+    expect(() => computeTierFloor(["../../etc/passwd"], policy)).toThrow(PathNormalizationError);
   });
 });

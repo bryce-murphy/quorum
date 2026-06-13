@@ -35,9 +35,9 @@ Only deterministic code may block a merge. LLM agents propose, build, and review
 | T3 | High blast radius | schema/migration, security-touching, new dependency, **any change to Quorum's own enforcement machinery** |
 | T4 | Irreversible / external | data deletion, releases, secrets |
 
-**Code-enforced tier floor**: the Planner proposes a tier; the Gate computes a floor from the diff and takes `max(proposed, floor)`. Tiers raise freely, never lower below floor. Phase 1 floor rules (path-based, in `.quorum/policy.yml`):
+**Code-enforced tier floor**: the Planner proposes a tier; the Gate computes a floor from the diff and takes `max(proposed, floor)`. Tiers raise freely, never lower below floor. Phase 1 floor rules (path-based, in `.quorum/policy.json` — JSON, not YAML; validated by the `quorum.policy/v1` schema so the policy parses through the same path as every other artifact, keeping L1 a git-plus-Node-only dependency. Ratified QRM-1: no YAML dependency):
 
-- `.github/workflows/**`, `.quorum/policy.yml`, `packages/gate-action/**`, `schemas/**` → floor T3
+- `.github/workflows/**`, `.quorum/policy.json`, `packages/gate-action/**`, `schemas/**` → floor T3
 - `**/package-lock.json`, `**/pnpm-lock.yaml`, dependency manifests with dep changes → floor T3
 - migrations / SQL / IaC paths (configurable glob) → floor T3
 - everything else → floor T0 (proposed tier governs)
@@ -85,7 +85,7 @@ quorum/
 │   └── gate-action/             # L2 — composite/JS Action wrapping the kernel
 ├── examples/demo/               # toy project exercised in CI as the living worked example
 ├── docs/                        # existing: PRINCIPLES, GLOSSARY, adr/, + this spec
-├── .quorum/                     # policy.yml, ledgers/, manifests/ (this repo dogfoods itself)
+├── .quorum/                     # policy.json, ledgers/, manifests/ (this repo dogfoods itself)
 └── .github/workflows/
     ├── ci.yml                   # build, test, schema validation
     └── quorum-verify.yml        # the Gate, running on this repo's own PRs
@@ -172,7 +172,7 @@ CLI: `quorum verify --task QRM-12 [--mode strict|salvage] [--local]`, `quorum ti
 
 ## 5. L2 gate — `quorum-verify` Action
 
-Trigger: `pull_request` (and `workflow_dispatch`). Steps: mint scoped App-identity token → read `.quorum/policy.yml` → compute `tier_effective` and write it back to the manifest check output → extract claims (mode per policy/tier) → verify each → post ledger as check summary → set conclusion.
+Trigger: `pull_request` (and `workflow_dispatch`). Steps: mint scoped App-identity token → read `.quorum/policy.json` → compute `tier_effective` and write it back to the manifest check output → extract claims (mode per policy/tier) → verify each → post ledger as check summary → set conclusion.
 
 Fail-closed / fail-open taxonomy (per policy, defaults):
 
