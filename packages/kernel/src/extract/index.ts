@@ -5,7 +5,7 @@ import type { ExtractResult, ExtractSources } from "./types.js";
 export type { ExtractSources, ExtractResult, ExtractError } from "./types.js";
 
 /**
- * Extract claims from PR sources (SPEC §3.2, §4).
+ * Extract claims from PR sources (SPEC 3.2, 4).
  *  - strict:  structured only. Claims file is the primary source, a fenced
  *             quorum-claims PR-body block the secondary. Parse errors surface so
  *             the Gate can fail closed.

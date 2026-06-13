@@ -3,7 +3,7 @@ import { SCHEMA_REGISTRY } from "./registry.js";
 
 /** Generate the JSON Schema for every registered contract, keyed by file stem.
  *  `$refStrategy: "none"` inlines all subschemas so output is self-contained and
- *  order-independent — a precondition for the byte-stable drift check. */
+ *  order-independent - a precondition for the byte-stable drift check. */
 export function generateSchemas(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const entry of Object.values(SCHEMA_REGISTRY)) {
@@ -29,7 +29,7 @@ function sortKeys(value: unknown): unknown {
 }
 
 /** Deterministic serialization: recursively key-sorted, 2-space, trailing newline.
- *  Identical input → identical bytes on every machine (paired with .gitattributes
+ *  Identical input -> identical bytes on every machine (paired with .gitattributes
  *  eol=lf), which is what makes the drift test meaningful. */
 export function stableStringify(value: unknown): string {
   return `${JSON.stringify(sortKeys(value), null, 2)}\n`;

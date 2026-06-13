@@ -1,7 +1,7 @@
 {
   "schema": "quorum.task/v1",
   "id": "QRM-1",
-  "title": "Phase 1 vertical slice — M1+M2",
+  "title": "Phase 1 vertical slice - M1+M2",
   "tier_proposed": "T1",
   "tier_effective": null,
   "acceptance": [

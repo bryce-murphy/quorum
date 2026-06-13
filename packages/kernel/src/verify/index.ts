@@ -18,7 +18,7 @@ const disclosed = (evidence: Evidence = {}): Outcome => ({
 
 /**
  * Verify one claim against actual repository/forge state. Pure dispatch over the
- * claim type (SPEC §3.1); all I/O goes through the injected `ForgeAdapter`. The
+ * claim type (SPEC 3.1); all I/O goes through the injected `ForgeAdapter`. The
  * kernel makes zero LLM calls and no network calls outside this adapter.
  */
 export async function verifyClaim(
@@ -58,14 +58,14 @@ async function dispatch(
     case "test_passed":
       return checkTestPassed(claim, forge, ctx);
     default: {
-      // Exhaustiveness guard — a new claim type without a checker is a build error.
+      // Exhaustiveness guard - a new claim type without a checker is a build error.
       const _never: never = claim;
       return _never;
     }
   }
 }
 
-// ── file_created ────────────────────────────────────────────────────────────
+// -- file_created ------------------------------------------------------------
 async function checkFileCreated(
   claim: Extract<Claim, { type: "file_created" }>,
   forge: ForgeAdapter,
@@ -77,7 +77,7 @@ async function checkFileCreated(
   return matchExpectedHash(claim, file.value.sha256, { path: claim.subject.path });
 }
 
-// ── file_modified ───────────────────────────────────────────────────────────
+// -- file_modified -----------------------------------------------------------
 async function checkFileModified(
   claim: Extract<Claim, { type: "file_modified" }>,
   forge: ForgeAdapter,
@@ -96,7 +96,7 @@ async function checkFileModified(
   return matchExpectedHash(claim, head.value.sha256, { path: claim.subject.path });
 }
 
-// ── file_deleted ────────────────────────────────────────────────────────────
+// -- file_deleted ------------------------------------------------------------
 async function checkFileDeleted(
   claim: Extract<Claim, { type: "file_deleted" }>,
   forge: ForgeAdapter,
@@ -112,9 +112,9 @@ async function checkFileDeleted(
   return verified({ path: claim.subject.path, was_present_at: ctx.mergeBase });
 }
 
-// ── commit_pushed ───────────────────────────────────────────────────────────
-// `resolveCommit` ok means resolvable AND reachable from head — the adapter,
-// which knows head, encapsulates the reachability check (SPEC §3.1).
+// -- commit_pushed -----------------------------------------------------------
+// `resolveCommit` ok means resolvable AND reachable from head - the adapter,
+// which knows head, encapsulates the reachability check (SPEC 3.1).
 async function checkCommitPushed(
   claim: Extract<Claim, { type: "commit_pushed" }>,
   forge: ForgeAdapter,
@@ -140,7 +140,7 @@ async function checkCommitPushed(
   return failed(evidence);
 }
 
-// ── pr_opened ───────────────────────────────────────────────────────────────
+// -- pr_opened ---------------------------------------------------------------
 async function checkPrOpened(
   claim: Extract<Claim, { type: "pr_opened" }>,
   forge: ForgeAdapter,
@@ -159,7 +159,7 @@ async function checkPrOpened(
   return verified({ number: pr.value.number, head_ref: pr.value.headRef });
 }
 
-// ── issue_filed ─────────────────────────────────────────────────────────────
+// -- issue_filed -------------------------------------------------------------
 async function checkIssueFiled(
   claim: Extract<Claim, { type: "issue_filed" }>,
   forge: ForgeAdapter,
@@ -168,7 +168,7 @@ async function checkIssueFiled(
   const issue = await forge.getIssue(claim.subject.number);
   if (issue.kind === "unsupported") return disclosed({ reason: "forge_cannot_read_issue" });
   if (issue.kind === "absent") return failed({ reason: "issue_not_found", number: claim.subject.number });
-  // SPEC §3.1: issue verified only if authored by the claiming App identity.
+  // SPEC 3.1: issue verified only if authored by the claiming App identity.
   if (ctx.identity && issue.value.author !== ctx.identity) {
     return failed({
       reason: "issue_author_mismatch",
@@ -180,7 +180,7 @@ async function checkIssueFiled(
   return verified({ number: issue.value.number, author: issue.value.author });
 }
 
-// ── review_posted ───────────────────────────────────────────────────────────
+// -- review_posted -----------------------------------------------------------
 async function checkReviewPosted(
   claim: Extract<Claim, { type: "review_posted" }>,
   forge: ForgeAdapter,
@@ -201,7 +201,7 @@ async function checkReviewPosted(
   return verified({ matched_id: match.id, surface: match.surface, polled });
 }
 
-// ── test_passed ─────────────────────────────────────────────────────────────
+// -- test_passed -------------------------------------------------------------
 async function checkTestPassed(
   claim: Extract<Claim, { type: "test_passed" }>,
   forge: ForgeAdapter,
@@ -218,7 +218,7 @@ async function checkTestPassed(
   return verified({ check_name: run.name, conclusion: run.conclusion });
 }
 
-// ── helpers ─────────────────────────────────────────────────────────────────
+// -- helpers -----------------------------------------------------------------
 function matchExpectedHash(
   claim: Claim,
   actualSha256: string,
@@ -232,6 +232,11 @@ function matchExpectedHash(
   return failed({ ...base, reason: "content_hash_mismatch", expected, actual: actualSha256 });
 }
 
+// Boundary (known decision, not a latent surprise): the Sub-shape B content scan
+// only considers files CHANGED between mergeBase and head. A phantom-citation
+// finding whose content lives in an UNCHANGED file records content_match:false.
+// This is intentional per spec intent -- findings concern the change under review,
+// not the entire repository tree -- and keeps the scan bounded to the diff.
 async function findContentMatch(
   forge: ForgeAdapter,
   ctx: VerifyContext,

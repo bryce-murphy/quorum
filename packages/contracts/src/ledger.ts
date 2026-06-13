@@ -3,10 +3,10 @@ import { SCHEMA_IDS } from "./ids.js";
 import { ClaimTypeSchema } from "./claim.js";
 import { TierSchema } from "./tier.js";
 
-/** A claim's verdict (SPEC §3.1):
- *  - verified               — checked against actual state, matches
- *  - failed                 — checked, does not match (fabrication / drift)
- *  - unverifiable_disclosed — agent honestly declared it could not verify */
+/** A claim's verdict (SPEC 3.1):
+ *  - verified               - checked against actual state, matches
+ *  - failed                 - checked, does not match (fabrication / drift)
+ *  - unverifiable_disclosed - agent honestly declared it could not verify */
 export const CLAIM_STATUSES = ["verified", "failed", "unverifiable_disclosed"] as const;
 export const ClaimStatusSchema = z.enum(CLAIM_STATUSES);
 

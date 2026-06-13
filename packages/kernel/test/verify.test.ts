@@ -47,7 +47,7 @@ describe("forge-only claims fall to unverifiable_disclosed when unsupported", ()
     unsupported: ["getPR", "getIssue", "getReviewsAllEndpoints", "getCheckRuns"],
   });
 
-  it("test_passed → disclosed when checks are unreadable", async () => {
+  it("test_passed -> disclosed when checks are unreadable", async () => {
     const r = await verifyClaim(
       mkClaim({ type: "test_passed", subject: { check_name: "ci" } }),
       forge,
@@ -56,7 +56,7 @@ describe("forge-only claims fall to unverifiable_disclosed when unsupported", ()
     expect(r.status).toBe("unverifiable_disclosed");
   });
 
-  it("pr_opened / issue_filed / review_posted → disclosed", async () => {
+  it("pr_opened / issue_filed / review_posted -> disclosed", async () => {
     for (const claim of [
       mkClaim({ type: "pr_opened", subject: { number: 1 } }),
       mkClaim({ type: "issue_filed", subject: { number: 2 } }),

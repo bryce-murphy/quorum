@@ -2,13 +2,13 @@ import type { ReviewItem } from "./adapter.js";
 
 /**
  * Merge the three GitHub reviewer surfaces into one deterministically ordered
- * list (SPEC §3.1, "three-endpoint poll"). AMAS evidence: reviewer output lands
+ * list (SPEC 3.1, "three-endpoint poll"). AMAS evidence: reviewer output lands
  * unpredictably across formal reviews, issue comments, and line comments, and
  * two emissions can share a timestamp to the second.
  *
  * Ordering is lexicographic on (submitted_at, id). The id tie-break is what
  * prevents a same-second emission from being dropped or non-deterministically
- * ordered — every item is preserved, order is stable across machines.
+ * ordered - every item is preserved, order is stable across machines.
  */
 export function mergeReviewEndpoints(
   reviews: readonly ReviewItem[],

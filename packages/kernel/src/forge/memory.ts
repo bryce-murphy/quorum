@@ -23,7 +23,7 @@ export interface ReviewEndpoints {
 }
 
 export interface MemoryForgeData {
-  /** ref → (path → content). sha256 is derived, not stored. */
+  /** ref -> (path -> content). sha256 is derived, not stored. */
   files?: Record<string, Record<string, string>>;
   /** Shas that are resolvable AND reachable from head. */
   commits?: string[];
@@ -31,7 +31,7 @@ export interface MemoryForgeData {
   issues?: Record<number, { author: string }>;
   reviews?: Record<number, ReviewEndpoints>;
   checks?: Record<string, CheckRun[]>;
-  /** "base..head" → compare result (changed paths for Sub-shape B scans). */
+  /** "base..head" -> compare result (changed paths for Sub-shape B scans). */
   compares?: Record<string, CompareResult>;
   /** Method names this backend should report as `unsupported` (off-ramp sim). */
   unsupported?: string[];
@@ -39,8 +39,8 @@ export interface MemoryForgeData {
 
 /**
  * In-memory `ForgeAdapter` for deterministic fixture replay (the AMAS corpus).
- * Anything not provided resolves to `absent` — i.e. it definitively does not
- * exist — unless the method is listed in `unsupported`.
+ * Anything not provided resolves to `absent` - i.e. it definitively does not
+ * exist - unless the method is listed in `unsupported`.
  */
 export class MemoryForge implements ForgeAdapter {
   constructor(private readonly data: MemoryForgeData = {}) {}

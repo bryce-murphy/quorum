@@ -1,4 +1,4 @@
-// L1 public surface (SPEC §4). Pure deterministic verification — zero LLM calls,
+// L1 public surface (SPEC 4). Pure deterministic verification - zero LLM calls,
 // no network outside the ForgeAdapter.
 
 export { extractClaims } from "./extract/index.js";

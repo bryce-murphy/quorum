@@ -8,9 +8,9 @@ import {
   postHandback,
 } from "./fixtures/amas.js";
 
-// The AMAS fixture suite is the Phase 1 acceptance bar (SPEC §4, §6).
+// The AMAS fixture suite is the Phase 1 acceptance bar (SPEC 4, 6).
 
-describe("AMAS Sub-shape A — fully fabricated claim", () => {
+describe("AMAS Sub-shape A - fully fabricated claim", () => {
   const forge = new MemoryForge(subShapeA.forge);
 
   it("marks a nonexistent file claim failed", async () => {
@@ -26,15 +26,15 @@ describe("AMAS Sub-shape A — fully fabricated claim", () => {
   });
 });
 
-describe("AMAS Sub-shape B — correct content, phantom citation", () => {
+describe("AMAS Sub-shape B - correct content, phantom citation", () => {
   const forge = new MemoryForge(subShapeB.forge);
 
   it("fails the citation but records the content-hash match as evidence", async () => {
     const r = await verifyClaim(subShapeB.phantomCitationRealContent, forge, subShapeB.ctx);
-    // The asserted action (this commit landing) did NOT happen → failed …
+    // The asserted action (this commit landing) did NOT happen -> failed ...
     expect(r.status).toBe("failed");
     expect(r.evidence["reason"]).toBe("commit_unresolvable");
-    // … but the finding is still real, and that distinction is preserved.
+    // ... but the finding is still real, and that distinction is preserved.
     expect(r.evidence["content_match"]).toBe(true);
     expect(r.evidence["matched_path"]).toBe("src/found.ts");
   });
@@ -48,7 +48,7 @@ describe("AMAS three-endpoint poll with same-second tie-break", () => {
     expect(r.status).toBe("verified");
     const polled = r.evidence["polled"] as Array<{ id: string }>;
     // a (issue_comment) and b (review) share 03:14:00Z; c is 03:14:01Z.
-    // Deterministic order is (submitted_at, id): a, b, c — none dropped.
+    // Deterministic order is (submitted_at, id): a, b, c - none dropped.
     expect(polled.map((p) => p.id)).toEqual(["a", "b", "c"]);
   });
 

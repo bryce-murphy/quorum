@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "L0 — Quorum contract schemas (zod source of truth + generated JSON Schema).",
+  "description": "L0 - Quorum contract schemas (zod source of truth + generated JSON Schema).",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

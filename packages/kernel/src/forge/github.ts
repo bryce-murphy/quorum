@@ -31,7 +31,7 @@ function isNotFound(err: unknown): boolean {
 
 /**
  * `ForgeAdapter` over the GitHub REST API, authenticated with a short-lived
- * App-identity token (SPEC §1.1 app-as-identity). 404s map to `absent`; other
+ * App-identity token (SPEC 1.1 app-as-identity). 404s map to `absent`; other
  * errors propagate so the Gate can fail closed rather than silently pass.
  */
 export class GitHubForge implements ForgeAdapter {
@@ -69,7 +69,7 @@ export class GitHubForge implements ForgeAdapter {
       if (isNotFound(err)) return absent();
       throw err;
     }
-    // Resolvable; confirm reachability from head (SPEC §3.1).
+    // Resolvable; confirm reachability from head (SPEC 3.1).
     const cmp = await this.compare(sha, this.head);
     if (cmp.kind === "ok" && (cmp.value.status === "ahead" || cmp.value.status === "identical")) {
       return ok({ sha });

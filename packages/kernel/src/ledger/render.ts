@@ -1,7 +1,7 @@
 import type { Ledger } from "@quorum/contracts";
 
-/** The headline one-liner (SPEC §3.4), e.g.
- *  `Quorum: 14 claims — 12 verified · 1 disclosed-unverifiable · 1 FAILED → blocking (T2, strict)` */
+/** The headline one-liner (SPEC 3.4), e.g.
+ *  `Quorum: 14 claims - 12 verified · 1 disclosed-unverifiable · 1 FAILED → blocking (T2, strict)` */
 export function renderHeadline(ledger: Ledger): string {
   const { counts } = ledger;
   const segments = [`${counts.verified} verified`];
@@ -11,7 +11,7 @@ export function renderHeadline(ledger: Ledger): string {
   if (counts.failed > 0) segments.push(`${counts.failed} FAILED`);
   const arrow = ledger.verdict === "fail" ? "blocking" : "clear";
   return (
-    `Quorum: ${counts.total} claims — ${segments.join(" · ")}` +
+    `Quorum: ${counts.total} claims - ${segments.join(" · ")}` +
     ` → ${arrow} (${ledger.tier_effective}, ${ledger.mode})`
   );
 }

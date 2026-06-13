@@ -3,8 +3,8 @@ import { SCHEMA_IDS, tierRank } from "@quorum/contracts";
 import type { LedgerContext } from "../types.js";
 
 /**
- * Fail-closed / fail-open verdict (SPEC §5):
- *  - salvage mode is advisory: it reports but never blocks → always pass.
+ * Fail-closed / fail-open verdict (SPEC 5):
+ *  - salvage mode is advisory: it reports but never blocks -> always pass.
  *  - strict mode: any `failed` claim blocks; `unverifiable_disclosed` blocks at
  *    T2+ (fail-closed for risky work) but passes at T0/T1 (fail-open for trivia).
  */
@@ -22,7 +22,7 @@ export function computeVerdict(
   return "pass";
 }
 
-/** Assemble the ledger of record from per-claim results (SPEC §3.4). */
+/** Assemble the ledger of record from per-claim results (SPEC 3.4). */
 export function buildLedger(results: readonly ClaimResult[], ctx: LedgerContext): Ledger {
   const counts = {
     total: results.length,

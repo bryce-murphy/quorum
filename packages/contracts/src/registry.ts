@@ -13,7 +13,7 @@ export interface SchemaEntry {
   readonly schema: ZodTypeAny;
 }
 
-/** Single source of truth tying schema ids → zod schemas → generated files.
+/** Single source of truth tying schema ids -> zod schemas -> generated files.
  *  Reused by the JSON Schema generator, the drift test, and the kernel's
  *  `validateArtifact` so nothing can fall out of sync. */
 export const SCHEMA_REGISTRY: Record<string, SchemaEntry> = {

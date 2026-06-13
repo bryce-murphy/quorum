@@ -1,12 +1,12 @@
 /**
- * Minimal, dependency-free glob → RegExp for policy path rules (SPEC §1.2).
+ * Minimal, dependency-free glob -> RegExp for policy path rules (SPEC 1.2).
  * Supports the only constructs the floor rules use:
- *   `**`  any run of characters incl. `/`   (`**​/` also matches zero leading dirs)
- *   `*`   any run of characters except `/`
- *   `?`   one character except `/`
+ *   double-star  any run of characters incl. slash (also matches zero leading dirs)
+ *   single-star  any run of characters except slash
+ *   question     one character except slash
  * Everything else is matched literally. Anchored full-string match.
  *
- * Kept in-house deliberately: pulling a glob library would breach the §7 dep
+ * Kept in-house deliberately: pulling a glob library would breach the 7 dep
  * allowlist for a problem this narrow.
  */
 export function globToRegExp(glob: string): RegExp {
@@ -18,12 +18,12 @@ export function globToRegExp(glob: string): RegExp {
         i++;
         if (glob[i + 1] === "/") {
           i++;
-          re += "(?:.*/)?"; // `**/` → zero or more leading directories
+          re += "(?:.*/)?"; // `**/` -> zero or more leading directories
         } else {
-          re += ".*"; // `**` → anything incl. slashes
+          re += ".*"; // `**` -> anything incl. slashes
         }
       } else {
-        re += "[^/]*"; // `*` → anything within a path segment
+        re += "[^/]*"; // `*` -> anything within a path segment
       }
     } else if (c === "?") {
       re += "[^/]";

@@ -3,7 +3,7 @@ import { maxTier } from "@quorum/contracts";
 import { globMatches } from "./glob.js";
 
 /**
- * Compute the code-enforced tier floor for a diff (SPEC §1.2). For every changed
+ * Compute the code-enforced tier floor for a diff (SPEC 1.2). For every changed
  * path, every matching rule contributes its floor; the result is the max across
  * all of them (and the policy default if nothing matched). The Gate then takes
  * max(proposed, floor) so a too-low proposed tier cannot lower a risky change.

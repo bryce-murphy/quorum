@@ -27,7 +27,7 @@ describe("computeVerdict", () => {
 });
 
 describe("renderHeadline", () => {
-  it("renders the SPEC §3.4 one-liner", () => {
+  it("renders the SPEC 3.4 one-liner", () => {
     const results = [
       ...Array.from({ length: 12 }, () => result("verified")),
       result("unverifiable_disclosed"),
@@ -40,7 +40,7 @@ describe("renderHeadline", () => {
       tier_effective: "T2",
     });
     expect(renderHeadline(ledger)).toBe(
-      "Quorum: 14 claims — 12 verified · 1 disclosed-unverifiable · 1 FAILED → blocking (T2, strict)",
+      "Quorum: 14 claims - 12 verified · 1 disclosed-unverifiable · 1 FAILED → blocking (T2, strict)",
     );
   });
 
@@ -51,6 +51,6 @@ describe("renderHeadline", () => {
       mode: "strict",
       tier_effective: "T1",
     });
-    expect(renderHeadline(ledger)).toBe("Quorum: 1 claims — 1 verified → clear (T1, strict)");
+    expect(renderHeadline(ledger)).toBe("Quorum: 1 claims - 1 verified → clear (T1, strict)");
   });
 });

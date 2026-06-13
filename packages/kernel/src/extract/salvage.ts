@@ -9,7 +9,7 @@ interface Pattern {
   subject: "path" | "sha" | "pr_number" | "issue_number";
 }
 
-// Pattern table is *data* (SPEC §4): derived from the AMAS prose-claim corpus,
+// Pattern table is *data* (SPEC 4): derived from the AMAS prose-claim corpus,
 // edited without touching code. Loaded relative to this module so it resolves
 // from both the TS source (tests) and the copied dist asset (CLI).
 const PATTERNS: Pattern[] = JSON.parse(
@@ -31,7 +31,7 @@ function buildSubject(kind: Pattern["subject"], captured: string): Record<string
 
 /**
  * Salvage miner: scan untrusted prose (PR body + commit messages) for action
- * claims. Results are advisory — they let the Gate emit a ledger even when no
+ * claims. Results are advisory - they let the Gate emit a ledger even when no
  * disciplined claims file exists. Mined claims are validated against the schema
  * and silently dropped if they don't conform.
  */

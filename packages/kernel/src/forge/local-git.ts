@@ -23,7 +23,7 @@ export interface LocalGitOptions {
 }
 
 /**
- * `ForgeAdapter` backed by plain git — the off-ramp guarantee (SPEC §4): the
+ * `ForgeAdapter` backed by plain git - the off-ramp guarantee (SPEC 4): the
  * verifier works for file and commit claims with no forge at all. Forge-only
  * claim types (PR / issue / review / check) honestly return `unsupported`, which
  * the ledger records as `unverifiable_disclosed` rather than guessing.
@@ -58,7 +58,7 @@ export class LocalGitForge implements ForgeAdapter {
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {
     const exists = this.git(["cat-file", "-e", `${sha}^{commit}`]) !== null;
     if (!exists) return absent();
-    // Resolvable; require reachability from head (SPEC §3.1).
+    // Resolvable; require reachability from head (SPEC 3.1).
     const reachable = this.git(["merge-base", "--is-ancestor", sha, this.head]) !== null;
     return reachable ? ok({ sha }) : absent();
   }

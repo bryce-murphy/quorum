@@ -17,7 +17,7 @@ import { computeTierFloor } from "./tier/floor.js";
 import { validateArtifact } from "./validate.js";
 import { LocalGitForge } from "./forge/local-git.js";
 
-/** Exit codes (SPEC §4): 0 pass · 1 claim failure · 2 protocol/parse failure. */
+/** Exit codes (SPEC 4): 0 pass - 1 claim failure - 2 protocol/parse failure. */
 const EXIT = { pass: 0, claimFailure: 1, protocol: 2 } as const;
 
 function fail(message: string, code: number): never {
@@ -69,7 +69,7 @@ function loadPolicy(cwd: string): Policy {
   return parsed.data;
 }
 
-// ── quorum verify ─────────────────────────────────────────────────────────────
+// -- quorum verify -------------------------------------------------------------
 async function cmdVerify(args: string[]): Promise<void> {
   const { flags, bools } = parseFlags(args);
   const task = flags["task"];
@@ -125,9 +125,9 @@ async function cmdVerify(args: string[]): Promise<void> {
   process.exit(ledger.verdict === "fail" ? EXIT.claimFailure : EXIT.pass);
 }
 
-// ── quorum tier ───────────────────────────────────────────────────────────────
+// -- quorum tier ---------------------------------------------------------------
 // Pure-local: derives changed paths from git and the committed policy. No forge,
-// no token (SPEC §6 acceptance invokes it exactly this way).
+// no token (SPEC 6 acceptance invokes it exactly this way).
 function cmdTier(args: string[]): void {
   const { flags } = parseFlags(args);
   const range = flags["diff"];
@@ -141,7 +141,7 @@ function cmdTier(args: string[]): void {
   process.exit(EXIT.pass);
 }
 
-// ── quorum validate ─────────────────────────────────────────────────────────
+// -- quorum validate ---------------------------------------------------------
 function cmdValidate(args: string[]): void {
   const file = args.find((a) => !a.startsWith("--"));
   if (!file) fail("validate requires a <file>", EXIT.protocol);

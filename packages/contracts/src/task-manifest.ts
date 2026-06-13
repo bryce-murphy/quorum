@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SCHEMA_IDS } from "./ids.js";
 import { TierSchema } from "./tier.js";
 
-/** Phase 1 task state machine (SPEC §3.3): deliberately minimal.
+/** Phase 1 task state machine (SPEC 3.3): deliberately minimal.
  *  Review/red-team states arrive in Phase 2 with the agents. */
 export const TASK_STATES = [
   "planned",
@@ -25,7 +25,7 @@ export const TaskManifestSchema = z
     acceptance: z.array(z.string().min(1)),
     branch: z.string().min(1),
     state: TaskStateSchema,
-    // role id → model id, e.g. { "builder": "claude-opus-4-8" }
+    // role id -> model id, e.g. { "builder": "claude-opus-4-8" }
     agents: z.record(z.string().min(1), z.string().min(1)),
   })
   .strict();

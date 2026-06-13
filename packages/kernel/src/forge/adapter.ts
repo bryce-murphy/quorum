@@ -2,11 +2,11 @@ import type { ReviewSurface } from "../types.js";
 
 /**
  * Uniform response envelope for every forge lookup.
- *  - ok         → resolved, value present
- *  - absent     → resolved, the thing definitively does NOT exist (→ `failed`)
- *  - unsupported→ this backend cannot answer (→ `unverifiable_disclosed`)
+ *  - ok         -> resolved, value present
+ *  - absent     -> resolved, the thing definitively does NOT exist (-> `failed`)
+ *  - unsupported-> this backend cannot answer (-> `unverifiable_disclosed`)
  *
- * The `unsupported` arm is the off-ramp guarantee made literal (SPEC §4):
+ * The `unsupported` arm is the off-ramp guarantee made literal (SPEC 4):
  * `LocalGitForge` answers file/commit claims with no forge at all, and honestly
  * reports `unsupported` for PR/issue/review/check claims instead of guessing.
  */
