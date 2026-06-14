@@ -29,6 +29,8 @@ function runCli(args: string[], cwd: string): Run {
   }
 }
 const git = (args: string[], cwd: string) => execFileSync("git", args, { cwd, stdio: ["ignore", "ignore", "ignore"] });
+const gitS = (args: string[], cwd: string) =>
+  execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 
 let seq = 0;
 const claim = (path: string, sha256?: string): string =>
@@ -157,6 +159,83 @@ describe.skipIf(!haveBuild)("quorum tier - rename-aware floor (FIX 10)", () => {
   });
 
   it("floors T3 from the renamed-away schemas/** path", () => {
+    const r = runCli(["tier", "--diff", "main..HEAD"], repo);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe("T3");
+  });
+});
+
+// FIX 11 - carving: a bad change in an earlier commit, HEAD left clean, and a
+// LATER ancestor passed as --base to exclude it from the delta. The base must be
+// the FORK POINT against the target; a carving base is refused.
+describe.skipIf(!haveBuild)("quorum verify - carving --base (FIX 11)", () => {
+  let repo: string;
+  let c1: string; // the commit carrying the malicious schema change
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), "quorum-carve-"));
+    git(["init", "-b", "main"], repo);
+    git(["config", "user.email", "t@t.test"], repo);
+    git(["config", "user.name", "Test"], repo);
+    writeFileSync(join(repo, "README.md"), "base\n");
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "C0 fork point"], repo);
+
+    git(["checkout", "-b", "feat"], repo);
+    mkdirSync(join(repo, "schemas"), { recursive: true });
+    mkdirSync(join(repo, ".quorum/claims"), { recursive: true });
+    mkdirSync(join(repo, ".quorum/manifests"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY);
+    writeFileSync(join(repo, ".quorum/manifests/QRM-C.json"), MANIFEST);
+    writeFileSync(join(repo, ".quorum/claims/QRM-C.jsonl"), `${claim("README.md")}\n`);
+    writeFileSync(join(repo, "schemas/evil.schema.json"), "{}\n"); // malicious, floors T3
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "C1 malicious schema"], repo);
+    c1 = gitS(["rev-parse", "HEAD"], repo);
+
+    writeFileSync(join(repo, "README.md"), "touch\n"); // C2: HEAD looks clean
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "C2 clean head"], repo);
+  });
+
+  it("refuses a carving --base that is ahead of the fork point against main", () => {
+    const r = runCli(["verify", "--local", "--task", "QRM-C", "--base", c1], repo);
+    expect(r.status).not.toBe(0); // must NOT clear; carving base rejected
+    expect(r.stdout).not.toContain("clear");
+  });
+
+  it("over the true fork point the malicious schema is in-delta and floors T3", () => {
+    const r = runCli(["tier", "--diff", "main..HEAD"], repo);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe("T3"); // not T0 - the change cannot be carved away
+  });
+});
+
+// FIX 12 - a non-ASCII changed path must still floor correctly (NUL-delimited
+// diff; without it git C-quotes the path and the tier is understated to T0).
+describe.skipIf(!haveBuild)("quorum tier - unicode path floor (FIX 12)", () => {
+  let repo: string;
+  const unicodeSchema = `schemas/caf${String.fromCharCode(0xe9)}.schema.json`; // U+00E9
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), "quorum-uni-"));
+    git(["init", "-b", "main"], repo);
+    git(["config", "user.email", "t@t.test"], repo);
+    git(["config", "user.name", "Test"], repo);
+    writeFileSync(join(repo, "README.md"), "base\n");
+    mkdirSync(join(repo, ".quorum"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY);
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "base"], repo);
+
+    git(["checkout", "-b", "feat"], repo);
+    mkdirSync(join(repo, "schemas"), { recursive: true });
+    writeFileSync(join(repo, unicodeSchema), "{}\n");
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "add unicode schema"], repo);
+  });
+
+  it("floors T3 for a non-ASCII schemas/ path", () => {
     const r = runCli(["tier", "--diff", "main..HEAD"], repo);
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toBe("T3");

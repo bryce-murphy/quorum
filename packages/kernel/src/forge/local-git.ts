@@ -105,29 +105,38 @@ export class LocalGitForge implements ForgeAdapter {
   }
 
   async compare(base: string, head: string): Promise<ForgeResponse<CompareResult>> {
-    // FIX 10: --name-status -M so a rename surfaces BOTH its old and new paths.
-    // A file renamed away from schemas/** must still floor T3 and require
-    // delete-coverage on the old path; the new path requires create-coverage.
-    const out = this.git(["diff", "--name-status", "-M", `${base}..${head}`]);
+    // FIX 10 + FIX 12: --name-status -M surfaces both sides of a rename; -z emits
+    // raw NUL-delimited paths so non-ASCII names aren't C-quoted (which would
+    // mis-split and let a floored path read as a different tier).
+    const out = this.git(["diff", "--name-status", "-M", "-z", `${base}..${head}`]);
     if (out === null) return unsupported();
     const changedPaths = parseNameStatus(out);
     return ok({ status: base === head ? "identical" : "ahead", changedPaths });
   }
 }
 
-/** Parse `git diff --name-status -M` output into a flat path list. Rename (R)
- *  and copy (C) rows carry old\tnew; both paths are included. */
+/**
+ * Parse `git diff --name-status -M -z` output into a flat path list. The -z
+ * stream is NUL-delimited tokens: a status token (`A`/`M`/`D`/`R100`/`C75`)
+ * followed by one path, except rename/copy statuses are followed by TWO paths
+ * (old then new); both are included. NUL delimiting keeps non-ASCII paths intact
+ * (no C-quoting), which is required for correct tier-floor matching.
+ */
 export function parseNameStatus(out: string): string[] {
+  const NUL = String.fromCharCode(0);
+  const tokens = out.split(NUL).filter((t) => t !== "");
   const paths: string[] = [];
-  for (const line of out.split("\n")) {
-    if (line.trim() === "") continue;
-    const fields = line.split("\t");
-    const status = fields[0] ?? "";
-    if ((status.startsWith("R") || status.startsWith("C")) && fields.length >= 3) {
-      if (fields[1]) paths.push(fields[1]);
-      if (fields[2]) paths.push(fields[2]);
-    } else if (fields[1]) {
-      paths.push(fields[1]);
+  let i = 0;
+  while (i < tokens.length) {
+    const status = tokens[i++]!;
+    if (status.startsWith("R") || status.startsWith("C")) {
+      const oldPath = tokens[i++];
+      const newPath = tokens[i++];
+      if (oldPath) paths.push(oldPath);
+      if (newPath) paths.push(newPath);
+    } else {
+      const path = tokens[i++];
+      if (path) paths.push(path);
     }
   }
   return paths;

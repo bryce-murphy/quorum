@@ -5,10 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalGitForge, parseNameStatus } from "../src/forge/local-git.js";
 
-// FIX 10 - rename/copy rows carry old + new; both must surface.
-describe("parseNameStatus (rename-aware diff)", () => {
+// FIX 10 + FIX 12 - NUL-delimited (-z) records; rename/copy carry old + new.
+const NUL = String.fromCharCode(0);
+const z = (...tokens: string[]) => tokens.join(NUL) + NUL;
+
+describe("parseNameStatus (rename-aware, NUL-delimited)", () => {
   it("includes both old and new paths for a rename", () => {
-    const out = ["A\tsrc/new.ts", "M\tsrc/edited.ts", "R100\tschemas/x.json\tdocs/x.json"].join("\n");
+    const out = z("A", "src/new.ts", "M", "src/edited.ts", "R100", "schemas/x.json", "docs/x.json");
     expect(parseNameStatus(out)).toEqual([
       "src/new.ts",
       "src/edited.ts",
@@ -17,9 +20,15 @@ describe("parseNameStatus (rename-aware diff)", () => {
     ]);
   });
 
-  it("handles deletes and copies, ignoring blank lines", () => {
-    const out = ["D\told.ts", "", "C75\ta.ts\tb.ts", ""].join("\n");
+  it("handles deletes and copies", () => {
+    const out = z("D", "old.ts", "C75", "a.ts", "b.ts");
     expect(parseNameStatus(out)).toEqual(["old.ts", "a.ts", "b.ts"]);
+  });
+
+  it("keeps non-ASCII paths intact (no C-quoting / mis-split)", () => {
+    const cafe = `schemas/caf${String.fromCharCode(0xe9)}.schema.json`; // U+00E9
+    const out = z("A", cafe);
+    expect(parseNameStatus(out)).toEqual([cafe]);
   });
 });
 

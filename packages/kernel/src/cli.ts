@@ -63,29 +63,32 @@ function gitOk(args: string[], cwd: string): boolean {
 }
 
 /**
- * Resolve the delta base or REFUSE to run (never fall back to an empty delta).
- *  - default: the fork point against `main` (FIX 7).
- *  - explicit --base: must be a TRUE ancestor of HEAD (FIX 8). Reject a base that
- *    equals HEAD, is a descendant/sibling, or is an unrelated orphan - each would
- *    shrink or forge the delta and let an unverified change ride in.
+ * Resolve the delta base = the FORK POINT, or REFUSE to run (FIX 7 + FIX 8 + 11).
+ *
+ * `--base` names the TARGET REF (the PR base branch), never a raw diff base. The
+ * kernel always computes `merge-base(HEAD, target)` itself, so an attacker cannot
+ * hand-pick a carving point. Default target is `main`.
+ *
+ * Carving guard (FIX 11): an attacker can put a bad change in an early commit,
+ * leave HEAD empty, and name a LATER ancestor so the change falls outside the
+ * delta (coverage sees nothing, tier drops to T0). So when `main` is resolvable,
+ * the computed base must be at or before the canonical fork point against `main`;
+ * a base that is a *descendant* of that fork point is a carve => refuse.
  */
-function resolveMergeBase(explicitBase: string | undefined, cwd: string): string {
-  if (explicitBase !== undefined) {
-    const baseSha = gitOut(["rev-parse", "--verify", `${explicitBase}^{commit}`], cwd)?.trim();
-    const headSha = gitOut(["rev-parse", "--verify", "HEAD^{commit}"], cwd)?.trim();
-    if (!baseSha || !headSha) fail(`could not resolve --base '${explicitBase}'`, EXIT.protocol);
-    if (baseSha === headSha) fail("--base must not equal HEAD (empty delta)", EXIT.protocol);
-    if (!gitOk(["merge-base", "--is-ancestor", explicitBase, "HEAD"], cwd)) {
-      fail(
-        `--base '${explicitBase}' is not an ancestor of HEAD; refusing (no empty or forged delta)`,
-        EXIT.protocol,
-      );
-    }
-    return baseSha;
-  }
-  const mb = gitOut(["merge-base", "HEAD", "main"], cwd)?.trim();
+function resolveMergeBase(target: string, cwd: string): string {
+  const mb = gitOut(["merge-base", "HEAD", target], cwd)?.trim();
   if (!mb) {
-    fail("could not resolve merge-base against 'main'; pass an explicit base via --base <ref>", EXIT.protocol);
+    fail(
+      `could not resolve merge-base against '${target}'; pass the PR base branch via --base <ref>`,
+      EXIT.protocol,
+    );
+  }
+  const canonical = gitOut(["merge-base", "HEAD", "main"], cwd)?.trim();
+  if (canonical && !gitOk(["merge-base", "--is-ancestor", mb, canonical], cwd)) {
+    fail(
+      `--base '${target}' carves the delta: its fork point is ahead of the fork against 'main'; refusing`,
+      EXIT.protocol,
+    );
   }
   return mb;
 }
@@ -150,10 +153,11 @@ async function cmdVerify(args: string[]): Promise<void> {
 
   // Repo state + tier floor.
   const head = "HEAD";
-  const mergeBase = resolveMergeBase(flags["base"], cwd); // FIX 7 + FIX 8
-  // FIX 10: --name-status -M so renames surface both old and new paths (an
-  // old path renamed away from schemas/** still floors T3 and needs coverage).
-  const diffRaw = gitOut(["diff", "--name-status", "-M", `${mergeBase}..${head}`], cwd) ?? "";
+  const mergeBase = resolveMergeBase(flags["base"] ?? "main", cwd); // FIX 7/8/11
+  // FIX 10 + FIX 12: --name-status -M surfaces both sides of a rename; -z gives
+  // raw NUL-delimited paths so non-ASCII names aren't C-quoted (which would
+  // mis-split and understate the tier floor).
+  const diffRaw = gitOut(["diff", "--name-status", "-M", "-z", `${mergeBase}..${head}`], cwd) ?? "";
   const diffPaths = parseNameStatus(diffRaw);
   const policy = loadPolicy(cwd);
   const tierEffective = maxTier(tierProposed, computeTierFloor(diffPaths, policy));
@@ -193,8 +197,8 @@ function cmdTier(args: string[]): void {
   const range = flags["diff"];
   if (!range) fail("tier requires --diff <range>", EXIT.protocol);
   const cwd = process.cwd();
-  // FIX 10: rename-aware so a renamed-away floored path still floors.
-  const diffOut = gitOut(["diff", "--name-status", "-M", range], cwd);
+  // FIX 10 + FIX 12: rename-aware and NUL-delimited (non-ASCII paths intact).
+  const diffOut = gitOut(["diff", "--name-status", "-M", "-z", range], cwd);
   if (diffOut === null) fail(`could not compute diff for range '${range}'`, EXIT.protocol);
   const diffPaths = parseNameStatus(diffOut);
   const policy = loadPolicy(cwd);
