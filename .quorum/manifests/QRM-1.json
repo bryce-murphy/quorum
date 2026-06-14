@@ -11,7 +11,7 @@
     "quorum verify --local --task QRM-1 runs clean on this claims file"
   ],
   "branch": "qrm-1-phase1-slice",
-  "state": "handed_back",
+  "state": "merged",
   "agents": {
     "builder": "claude-opus-4-8",
     "reviewer": "gpt-codex"
