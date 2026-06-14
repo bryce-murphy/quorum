@@ -1,0 +1,19 @@
+{
+  "schema": "quorum.task/v1",
+  "id": "QRM-1",
+  "title": "Phase 1 vertical slice - M1+M2",
+  "tier_proposed": "T1",
+  "tier_effective": null,
+  "acceptance": [
+    "zod schemas + generated JSON Schema + CI drift check (M1)",
+    "extract/verify/ledger green against the full AMAS fixture suite (M2)",
+    "LocalGitForge works offline; GitHubForge compiles",
+    "quorum verify --local --task QRM-1 runs clean on this claims file"
+  ],
+  "branch": "qrm-1-phase1-slice",
+  "state": "handed_back",
+  "agents": {
+    "builder": "claude-opus-4-8",
+    "reviewer": "gpt-codex"
+  }
+}

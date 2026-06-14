@@ -16,7 +16,7 @@ Open an issue to challenge a principle, a founding decision, or the architecture
 
 Quorum dogfoods itself: contributions flow through Quorum's own process once it exists.
 
-- Every change threads a stable task ID through issue → branch → handoff → PR.
+- Every change threads a stable task ID through issue -> branch -> handoff -> PR.
 - Branch naming, PR template, and required checks are enforced by Actions (not by reviewer memory).
 - The Builder and Reviewer on any non-trivial change are different model families (principle 7).
 - Ceremony scales with risk tier (principle 3): a typo is near-zero ceremony; an architectural change gets the full pipeline plus an ADR.

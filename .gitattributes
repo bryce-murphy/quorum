@@ -1,0 +1,18 @@
+# Normalize line endings: deterministic bytes across Windows/macOS/Linux.
+# This is load-bearing for Quorum: the schema-drift test compares JSON byte-for-byte
+# and claim ledgers parse .jsonl line-by-line — CRLF would make both fragile.
+* text=auto eol=lf
+
+*.ts   text eol=lf
+*.mts  text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Binary assets (none yet, but pin the common ones so text=auto never mangles them)
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary

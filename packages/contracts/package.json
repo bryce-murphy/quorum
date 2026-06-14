@@ -1,0 +1,28 @@
+{
+  "name": "@quorum/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "L0 - Quorum contract schemas (zod source of truth + generated JSON Schema).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schemas/*": "./schemas/*"
+  },
+  "files": [
+    "dist",
+    "schemas"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "gen:schemas": "tsc -p tsconfig.json && node dist/scripts/gen-schemas.js"
+  },
+  "dependencies": {
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.5"
+  }
+}

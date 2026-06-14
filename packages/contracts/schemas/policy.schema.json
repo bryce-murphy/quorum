@@ -1,0 +1,65 @@
+{
+  "$ref": "#/definitions/Policy",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Policy": {
+      "additionalProperties": false,
+      "properties": {
+        "default_floor": {
+          "enum": [
+            "T0",
+            "T1",
+            "T2",
+            "T3",
+            "T4"
+          ],
+          "type": "string"
+        },
+        "exempt_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rules": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "floor": {
+                "enum": [
+                  "T0",
+                  "T1",
+                  "T2",
+                  "T3",
+                  "T4"
+                ],
+                "type": "string"
+              },
+              "glob": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "glob",
+              "floor"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "schema": {
+          "const": "quorum.policy/v1",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "default_floor",
+        "rules"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -41,3 +41,9 @@ coverage/
 *.sqlite
 *.sqlite3
 *.db
+
+# Red-team adversarial scratch (ephemeral; never canonical)
+redteam-scratch-*/
+
+# Red-team scratch repos (ephemeral, created outside the kernel)
+redteam*-scratch-*/

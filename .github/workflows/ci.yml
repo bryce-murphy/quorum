@@ -1,0 +1,24 @@
+name: ci
+
+# Build + test + schema-drift for the Quorum monorepo.
+# NOTE: this is ordinary CI, not the Quorum Gate. The Gate (quorum-verify.yml,
+# the L2 Action) is Phase 1 milestone M3 and is intentionally absent here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: schema drift
+        run: npm run drift
