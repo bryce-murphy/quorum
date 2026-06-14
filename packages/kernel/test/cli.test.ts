@@ -154,7 +154,11 @@ describe.skipIf(!haveBuild)("quorum verify - merge-base resolution (FIX 7)", () 
       `${claim({ type: "file_created", subject: { path: "src/a.ts" } })}\n`,
     );
     git(["add", "-A"], repo);
-    git(["commit", "-m", "init"], repo);
+    git(["commit", "-m", "init (ancestor)"], repo);
+    // A second commit so trunk~1 is a real ancestor to supply as --base.
+    writeFileSync(join(repo, "src/b.ts"), "world\n");
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "second"], repo);
   });
 
   it("exit 2: default base 'main' absent and no --base => refuse to run", () => {
@@ -162,8 +166,69 @@ describe.skipIf(!haveBuild)("quorum verify - merge-base resolution (FIX 7)", () 
     expect(r.status).toBe(2);
   });
 
-  it("an explicit --base lets CI / the Gate supply the known base", () => {
-    const r = runCli(["verify", "--local", "--task", "QRM-T", "--base", "trunk"], repo);
-    expect(r.status).not.toBe(2); // resolves now; does not refuse
+  it("an explicit ancestor --base lets CI / the Gate supply the known base", () => {
+    const r = runCli(["verify", "--local", "--task", "QRM-T", "--base", "trunk~1"], repo);
+    expect(r.status).not.toBe(2); // resolves against a real ancestor; does not refuse
+  });
+});
+
+// FIX 8 - an attacker-supplied --base must be a TRUE ancestor of HEAD. A base
+// that equals HEAD, is a descendant/sibling, or an unrelated orphan would shrink
+// or forge the delta and let an unverified change ride in => refuse (exit 2).
+describe.skipIf(!haveBuild)("quorum verify - --base ancestor validation (FIX 8)", () => {
+  let repo: string;
+  const POLICY_EXEMPT = JSON.stringify({
+    schema: "quorum.policy/v1",
+    default_floor: "T0",
+    rules: [{ glob: "schemas/**", floor: "T3" }],
+    exempt_paths: [".quorum/**"],
+  });
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), "quorum-base8-"));
+    git(["init", "-b", "main"], repo);
+    git(["config", "user.email", "t@t.test"], repo);
+    git(["config", "user.name", "Test"], repo);
+    mkdirSync(join(repo, "src"), { recursive: true });
+    writeFileSync(join(repo, "src/a.ts"), "export const a = 1;\n");
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "base (ancestor)"], repo); // main = true ancestor
+
+    git(["checkout", "-b", "feat"], repo);
+    writeFileSync(join(repo, "src/b.ts"), "export const b = 1;\n");
+    mkdirSync(join(repo, ".quorum/claims"), { recursive: true });
+    mkdirSync(join(repo, ".quorum/manifests"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY_EXEMPT);
+    writeFileSync(join(repo, ".quorum/manifests/QRM-T.json"), manifest("QRM-T"));
+    writeFileSync(
+      join(repo, ".quorum/claims/QRM-T.jsonl"),
+      `${claim({ type: "file_created", subject: { path: "src/b.ts" } })}\n`,
+    );
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "feature (HEAD)"], repo);
+
+    // An unrelated orphan with no common ancestor (identical-ish tree).
+    git(["checkout", "--orphan", "orphan"], repo);
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "orphan"], repo);
+    git(["checkout", "feat"], repo);
+  });
+
+  it("exit 2: --base HEAD (empty delta)", () => {
+    expect(runCli(["verify", "--local", "--task", "QRM-T", "--base", "HEAD"], repo).status).toBe(2);
+  });
+
+  it("exit 2: --base on an unrelated orphan (no common ancestor)", () => {
+    expect(runCli(["verify", "--local", "--task", "QRM-T", "--base", "orphan"], repo).status).toBe(2);
+  });
+
+  it("a legitimate ancestor --base is accepted (not refused)", () => {
+    const r = runCli(["verify", "--local", "--task", "QRM-T", "--base", "main"], repo);
+    expect(r.status).not.toBe(2);
+  });
+
+  it("normal run with main present (no --base) is unchanged", () => {
+    const r = runCli(["verify", "--local", "--task", "QRM-T"], repo);
+    expect(r.status).not.toBe(2);
   });
 });

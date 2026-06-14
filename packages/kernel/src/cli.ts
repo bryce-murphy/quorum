@@ -15,7 +15,7 @@ import { buildLedger } from "./ledger/build.js";
 import { renderLedger } from "./ledger/render.js";
 import { computeTierFloor } from "./tier/floor.js";
 import { validateArtifact } from "./validate.js";
-import { LocalGitForge } from "./forge/local-git.js";
+import { LocalGitForge, parseNameStatus } from "./forge/local-git.js";
 import { applyStrictFailClosed, computeUncoveredPaths } from "./gate.js";
 
 /** Exit codes (SPEC 4): 0 pass - 1 claim failure - 2 protocol/parse failure. */
@@ -50,6 +50,44 @@ function gitOut(args: string[], cwd: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** True iff `git <args>` exits 0 (used for predicate commands like is-ancestor). */
+function gitOk(args: string[], cwd: string): boolean {
+  try {
+    execFileSync("git", args, { cwd, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the delta base or REFUSE to run (never fall back to an empty delta).
+ *  - default: the fork point against `main` (FIX 7).
+ *  - explicit --base: must be a TRUE ancestor of HEAD (FIX 8). Reject a base that
+ *    equals HEAD, is a descendant/sibling, or is an unrelated orphan - each would
+ *    shrink or forge the delta and let an unverified change ride in.
+ */
+function resolveMergeBase(explicitBase: string | undefined, cwd: string): string {
+  if (explicitBase !== undefined) {
+    const baseSha = gitOut(["rev-parse", "--verify", `${explicitBase}^{commit}`], cwd)?.trim();
+    const headSha = gitOut(["rev-parse", "--verify", "HEAD^{commit}"], cwd)?.trim();
+    if (!baseSha || !headSha) fail(`could not resolve --base '${explicitBase}'`, EXIT.protocol);
+    if (baseSha === headSha) fail("--base must not equal HEAD (empty delta)", EXIT.protocol);
+    if (!gitOk(["merge-base", "--is-ancestor", explicitBase, "HEAD"], cwd)) {
+      fail(
+        `--base '${explicitBase}' is not an ancestor of HEAD; refusing (no empty or forged delta)`,
+        EXIT.protocol,
+      );
+    }
+    return baseSha;
+  }
+  const mb = gitOut(["merge-base", "HEAD", "main"], cwd)?.trim();
+  if (!mb) {
+    fail("could not resolve merge-base against 'main'; pass an explicit base via --base <ref>", EXIT.protocol);
+  }
+  return mb;
 }
 
 function readJson(path: string): unknown {
@@ -112,23 +150,11 @@ async function cmdVerify(args: string[]): Promise<void> {
 
   // Repo state + tier floor.
   const head = "HEAD";
-  // FIX 7: resolve the merge-base or REFUSE to run. Falling back to HEAD would
-  // make the delta empty, which makes coverage trivially pass - a silent clean
-  // ledger over an unverified change, the same class as the unclaimed-paths bug.
-  const baseRef = flags["base"] ?? "main";
-  let mergeBase = gitOut(["merge-base", "HEAD", baseRef], cwd)?.trim();
-  if (!mergeBase && flags["base"]) {
-    // Explicit base given but no common ancestor: use it directly if it resolves.
-    mergeBase = gitOut(["rev-parse", "--verify", `${baseRef}^{commit}`], cwd)?.trim();
-  }
-  if (!mergeBase) {
-    fail(
-      `could not resolve merge-base against '${baseRef}'; pass an explicit base via --base <ref>`,
-      EXIT.protocol,
-    );
-  }
-  const diffOut = gitOut(["diff", "--name-only", `${mergeBase}..${head}`], cwd) ?? "";
-  const diffPaths = diffOut.split("\n").map((s) => s.trim()).filter(Boolean);
+  const mergeBase = resolveMergeBase(flags["base"], cwd); // FIX 7 + FIX 8
+  // FIX 10: --name-status -M so renames surface both old and new paths (an
+  // old path renamed away from schemas/** still floors T3 and needs coverage).
+  const diffRaw = gitOut(["diff", "--name-status", "-M", `${mergeBase}..${head}`], cwd) ?? "";
+  const diffPaths = parseNameStatus(diffRaw);
   const policy = loadPolicy(cwd);
   const tierEffective = maxTier(tierProposed, computeTierFloor(diffPaths, policy));
 
@@ -136,8 +162,15 @@ async function cmdVerify(args: string[]): Promise<void> {
   const rawResults = await verifyClaims(extracted.claims, forge, { head, mergeBase, branch });
   // FIX 4: fail closed on unverifiable forge-only claims in strict mode.
   const results = applyStrictFailClosed(rawResults, mode);
-  // FIX 1: every changed path must be covered by a verified claim or exemption.
-  const uncovered = computeUncoveredPaths(extracted.claims, results, diffPaths, policy.exempt_paths ?? []);
+  // FIX 1 + FIX 9: every changed path must be covered by a qualifying claim
+  // (content-verified at T2+) or a policy exemption.
+  const uncovered = computeUncoveredPaths(
+    extracted.claims,
+    results,
+    diffPaths,
+    policy.exempt_paths ?? [],
+    tierEffective,
+  );
 
   const ledger = buildLedger(results, {
     task,
@@ -160,9 +193,10 @@ function cmdTier(args: string[]): void {
   const range = flags["diff"];
   if (!range) fail("tier requires --diff <range>", EXIT.protocol);
   const cwd = process.cwd();
-  const diffOut = gitOut(["diff", "--name-only", range], cwd);
+  // FIX 10: rename-aware so a renamed-away floored path still floors.
+  const diffOut = gitOut(["diff", "--name-status", "-M", range], cwd);
   if (diffOut === null) fail(`could not compute diff for range '${range}'`, EXIT.protocol);
-  const diffPaths = diffOut.split("\n").map((s) => s.trim()).filter(Boolean);
+  const diffPaths = parseNameStatus(diffOut);
   const policy = loadPolicy(cwd);
   process.stdout.write(`${computeTierFloor(diffPaths, policy)}\n`);
   process.exit(EXIT.pass);

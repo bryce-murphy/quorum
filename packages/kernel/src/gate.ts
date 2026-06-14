@@ -1,4 +1,5 @@
-import type { Claim, ClaimResult, ClaimType } from "@quorum/contracts";
+import type { Claim, ClaimResult, ClaimType, Tier } from "@quorum/contracts";
+import { tierRank } from "@quorum/contracts";
 import { globMatches, normalizeGlobSeparators, normalizePath } from "./tier/glob.js";
 
 /** Claim types whose verification depends on the forge (not local git). When the
@@ -48,23 +49,31 @@ export function applyStrictFailClosed(
 
 /**
  * FIX 1 - diff-coverage requirement. Return the changed paths that are NOT
- * covered by a verified/verified_exists file claim and NOT exempt by policy.
- * The verifier must verify the CHANGE, not just whatever claims happen to exist:
- * an unclaimed changed path is exactly how a backdoor rides in under a clean
- * ledger.
+ * covered by a qualifying file claim and NOT exempt by policy. The verifier must
+ * verify the CHANGE, not just whatever claims happen to exist: an unclaimed
+ * changed path is exactly how a backdoor rides in under a clean ledger.
+ *
+ * FIX 9 - coverage credit is tier-proportionate. At T2+, only a content-hash-
+ * checked `verified` claim covers; `verified_exists` (existence only) does NOT,
+ * because at high blast radius "a file by this name exists" is not enough - the
+ * content must be pinned. At T0/T1, existence is proportionate and covers.
  */
 export function computeUncoveredPaths(
   claims: readonly Claim[],
   results: readonly ClaimResult[],
   changedPaths: readonly string[],
   exemptGlobs: readonly string[] = [],
+  tier: Tier = "T0",
 ): string[] {
+  const requireContent = tierRank(tier) >= tierRank("T2");
   const statusById = new Map(results.map((r) => [r.claim_id, r.status]));
   const covered = new Set<string>();
   for (const claim of claims) {
     if (!FILE_TYPES.has(claim.type)) continue;
     const status = statusById.get(claim.id);
-    if (status !== "verified" && status !== "verified_exists") continue;
+    const covers =
+      status === "verified" || (!requireContent && status === "verified_exists");
+    if (!covers) continue;
     const path = (claim.subject as { path: string }).path;
     covered.add(normalizePath(path));
   }

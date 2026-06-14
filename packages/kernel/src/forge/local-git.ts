@@ -105,9 +105,30 @@ export class LocalGitForge implements ForgeAdapter {
   }
 
   async compare(base: string, head: string): Promise<ForgeResponse<CompareResult>> {
-    const out = this.git(["diff", "--name-only", `${base}..${head}`]);
+    // FIX 10: --name-status -M so a rename surfaces BOTH its old and new paths.
+    // A file renamed away from schemas/** must still floor T3 and require
+    // delete-coverage on the old path; the new path requires create-coverage.
+    const out = this.git(["diff", "--name-status", "-M", `${base}..${head}`]);
     if (out === null) return unsupported();
-    const changedPaths = out.split("\n").map((s) => s.trim()).filter((s) => s !== "");
+    const changedPaths = parseNameStatus(out);
     return ok({ status: base === head ? "identical" : "ahead", changedPaths });
   }
+}
+
+/** Parse `git diff --name-status -M` output into a flat path list. Rename (R)
+ *  and copy (C) rows carry old\tnew; both paths are included. */
+export function parseNameStatus(out: string): string[] {
+  const paths: string[] = [];
+  for (const line of out.split("\n")) {
+    if (line.trim() === "") continue;
+    const fields = line.split("\t");
+    const status = fields[0] ?? "";
+    if ((status.startsWith("R") || status.startsWith("C")) && fields.length >= 3) {
+      if (fields[1]) paths.push(fields[1]);
+      if (fields[2]) paths.push(fields[2]);
+    } else if (fields[1]) {
+      paths.push(fields[1]);
+    }
+  }
+  return paths;
 }

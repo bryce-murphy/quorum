@@ -28,14 +28,35 @@ describe("computeUncoveredPaths (diff coverage)", () => {
     expect(uncovered).toEqual(["src/x.ts"]);
   });
 
-  it("verified and verified_exists both cover", () => {
+  it("verified and verified_exists both cover at T0/T1", () => {
     const a = mkClaim({ type: "file_created", subject: { path: "a.ts" } });
     const b = mkClaim({ type: "file_modified", subject: { path: "b.ts" } });
     const uncovered = computeUncoveredPaths(
       [a, b],
       [resultFor(a, "verified"), resultFor(b, "verified_exists")],
       ["a.ts", "b.ts"],
+      [],
+      "T1",
     );
+    expect(uncovered).toEqual([]);
+  });
+
+  // FIX 9 - coverage credit is tier-proportionate.
+  it("at T2+, verified_exists does NOT cover (content hash required)", () => {
+    const a = mkClaim({ type: "file_created", subject: { path: "a.ts" } });
+    const uncovered = computeUncoveredPaths(
+      [a],
+      [resultFor(a, "verified_exists")],
+      ["a.ts"],
+      [],
+      "T3",
+    );
+    expect(uncovered).toEqual(["a.ts"]); // existence-only is not enough at T3
+  });
+
+  it("at T2+, a content-verified claim covers", () => {
+    const a = mkClaim({ type: "file_created", subject: { path: "a.ts" } });
+    const uncovered = computeUncoveredPaths([a], [resultFor(a, "verified")], ["a.ts"], [], "T3");
     expect(uncovered).toEqual([]);
   });
 

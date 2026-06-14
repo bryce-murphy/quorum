@@ -3,7 +3,25 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LocalGitForge } from "../src/forge/local-git.js";
+import { LocalGitForge, parseNameStatus } from "../src/forge/local-git.js";
+
+// FIX 10 - rename/copy rows carry old + new; both must surface.
+describe("parseNameStatus (rename-aware diff)", () => {
+  it("includes both old and new paths for a rename", () => {
+    const out = ["A\tsrc/new.ts", "M\tsrc/edited.ts", "R100\tschemas/x.json\tdocs/x.json"].join("\n");
+    expect(parseNameStatus(out)).toEqual([
+      "src/new.ts",
+      "src/edited.ts",
+      "schemas/x.json",
+      "docs/x.json",
+    ]);
+  });
+
+  it("handles deletes and copies, ignoring blank lines", () => {
+    const out = ["D\told.ts", "", "C75\ta.ts\tb.ts", ""].join("\n");
+    expect(parseNameStatus(out)).toEqual(["old.ts", "a.ts", "b.ts"]);
+  });
+});
 
 describe("LocalGitForge - blob requirement (FIX 2) and in-delta commits (FIX 3)", () => {
   let repo: string;
