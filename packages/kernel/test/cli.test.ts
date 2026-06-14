@@ -38,6 +38,10 @@ function git(args: string[], cwd: string): void {
   execFileSync("git", args, { cwd, stdio: ["ignore", "ignore", "ignore"] });
 }
 
+function gitS(args: string[], cwd: string): string {
+  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+}
+
 const claim = (over: Record<string, unknown>): string =>
   JSON.stringify({
     schema: "quorum.claim/v1",
@@ -166,9 +170,12 @@ describe.skipIf(!haveBuild)("quorum verify - merge-base resolution (FIX 7)", () 
     expect(r.status).toBe(2);
   });
 
-  it("an explicit ancestor --base lets CI / the Gate supply the known base", () => {
+  // FIX 13: with no `main` anchor, even an ancestor --base is refused - there is
+  // no trusted fork point to guard against carving. (M3's Gate supplies an
+  // authenticated PR base; Phase 1 --local fails closed.)
+  it("exit 2: an explicit --base without a 'main' anchor is refused", () => {
     const r = runCli(["verify", "--local", "--task", "QRM-T", "--base", "trunk~1"], repo);
-    expect(r.status).not.toBe(2); // resolves against a real ancestor; does not refuse
+    expect(r.status).toBe(2);
   });
 });
 
@@ -230,5 +237,44 @@ describe.skipIf(!haveBuild)("quorum verify - --base ancestor validation (FIX 8)"
   it("normal run with main present (no --base) is unchanged", () => {
     const r = runCli(["verify", "--local", "--task", "QRM-T"], repo);
     expect(r.status).not.toBe(2);
+  });
+});
+
+// FIX 13 - the carving guard must not silently disable when `main` is absent.
+// Repro: no main; bad change in C1; HEAD (C2) clean; attacker passes --base C1
+// to carve C1 out of the delta. Without an anchor, the kernel must REFUSE.
+describe.skipIf(!haveBuild)("quorum verify - unanchored --base carving (FIX 13)", () => {
+  let repo: string;
+  let c1: string;
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), "quorum-noanchor-"));
+    git(["init", "-b", "work"], repo); // deliberately NOT main
+    git(["config", "user.email", "t@t.test"], repo);
+    git(["config", "user.name", "Test"], repo);
+    writeFileSync(join(repo, "README.md"), "c0\n");
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "C0"], repo);
+
+    mkdirSync(join(repo, "schemas"), { recursive: true });
+    mkdirSync(join(repo, ".quorum/claims"), { recursive: true });
+    mkdirSync(join(repo, ".quorum/manifests"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY);
+    writeFileSync(join(repo, ".quorum/manifests/QRM-T.json"), manifest("QRM-T"));
+    writeFileSync(join(repo, ".quorum/claims/QRM-T.jsonl"), `${claim({ type: "file_created", subject: { path: "README.md" } })}\n`);
+    writeFileSync(join(repo, "schemas/evil.schema.json"), "{}\n"); // malicious
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "C1 malicious"], repo);
+    c1 = gitS(["rev-parse", "HEAD"], repo);
+
+    writeFileSync(join(repo, "README.md"), "c2\n"); // clean head
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "C2"], repo);
+  });
+
+  it("refuses an unanchored --base (no main) instead of carving (exit 2)", () => {
+    const r = runCli(["verify", "--local", "--task", "QRM-T", "--base", c1], repo);
+    expect(r.status).toBe(2);
+    expect(r.stdout).not.toContain("clear");
   });
 });

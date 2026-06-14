@@ -75,7 +75,8 @@ function gitOk(args: string[], cwd: string): boolean {
  * the computed base must be at or before the canonical fork point against `main`;
  * a base that is a *descendant* of that fork point is a carve => refuse.
  */
-function resolveMergeBase(target: string, cwd: string): string {
+function resolveMergeBase(explicitBase: string | undefined, cwd: string): string {
+  const target = explicitBase ?? "main";
   const mb = gitOut(["merge-base", "HEAD", target], cwd)?.trim();
   if (!mb) {
     fail(
@@ -83,10 +84,26 @@ function resolveMergeBase(target: string, cwd: string): string {
       EXIT.protocol,
     );
   }
+  // The delta base must be anchored to a TRUSTED fork point. `main` is that
+  // anchor for Phase 1 --local.
   const canonical = gitOut(["merge-base", "HEAD", "main"], cwd)?.trim();
-  if (canonical && !gitOk(["merge-base", "--is-ancestor", mb, canonical], cwd)) {
+  if (canonical) {
+    // Carving guard (FIX 11): the chosen base must be at or before the main fork
+    // point; a descendant carves changes out of the delta => refuse.
+    if (!gitOk(["merge-base", "--is-ancestor", mb, canonical], cwd)) {
+      fail(
+        `--base '${target}' carves the delta: its fork point is ahead of the fork against 'main'; refusing`,
+        EXIT.protocol,
+      );
+    }
+  } else if (explicitBase !== undefined) {
+    // FIX 13: no `main` anchor AND an explicit --base. We have no trusted fork
+    // point to detect carving, so we must NOT trust an arbitrary target ref -
+    // fail closed rather than compute an unanchored delta. (In M3 the Gate
+    // supplies an authenticated, immutable PR base from the forge event; that is
+    // the trust source that makes --base safe without a local `main`.)
     fail(
-      `--base '${target}' carves the delta: its fork point is ahead of the fork against 'main'; refusing`,
+      "refusing --base without a 'main' anchor: no trusted fork point to guard against delta carving",
       EXIT.protocol,
     );
   }
@@ -153,7 +170,7 @@ async function cmdVerify(args: string[]): Promise<void> {
 
   // Repo state + tier floor.
   const head = "HEAD";
-  const mergeBase = resolveMergeBase(flags["base"] ?? "main", cwd); // FIX 7/8/11
+  const mergeBase = resolveMergeBase(flags["base"], cwd); // FIX 7/8/11/13
   // FIX 10 + FIX 12: --name-status -M surfaces both sides of a rename; -z gives
   // raw NUL-delimited paths so non-ASCII names aren't C-quoted (which would
   // mis-split and understate the tier floor).
