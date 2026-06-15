@@ -2,7 +2,7 @@
 
 **A multi-agent software-delivery framework where independent AI agents propose, review, and red-team work - and a human holds merge authority - coordinating through the repository instead of a human clipboard.**
 
-> **Status: bootstrap - architecture ratified, build not yet started.** The architecture has been specified and ratified (see [`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) and the decisions in [`docs/adr/`](docs/adr/)); the founding decisions are in [`docs/adr/ADR-0001-founding-decisions.md`](docs/adr/ADR-0001-founding-decisions.md). **No tooling ships yet** - Phase 1 (the verification kernel) is the next work and arrives via pull requests. This README describes the intended product so adopters share one picture; sections marked _(planned)_ or _specified, not yet built_ are not implemented and say so honestly. Quorum's predecessor failed in part by describing enforcement it had not shipped - Quorum will not repeat that, starting with this README.
+> **Status: Phase 1 in progress - the verification kernel has shipped; enforcement (the Gate) is next.** The architecture is ratified (see [`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) and the decisions in [`docs/adr/`](docs/adr/); founding decisions in [`docs/adr/ADR-0001-founding-decisions.md`](docs/adr/ADR-0001-founding-decisions.md)). Phase 1's **L0 contracts** and **L1 verification kernel** - the deterministic claim verifier plus the `quorum` CLI (`verify` / `tier` / `validate`) - shipped in QRM-1 (milestones M1+M2) and build and run from source today. The **L2 enforcement Gate** (a required status check) and **App-as-identity** are the next work (M3) and arrive via pull requests. This README describes the intended product so adopters share one picture; sections marked _(planned)_ or _specified, not yet built_ are not implemented and say so honestly. Quorum's predecessor failed by describing enforcement it had not shipped; this README is held to the inverse standard too - corrected to match what is actually on `main`.
 
 ---
 
@@ -59,10 +59,10 @@ Professional roles, with beginner-facing labels in parentheses:
 | Governance principles | drafted ([`docs/PRINCIPLES.md`](docs/PRINCIPLES.md)) |
 | Founding decisions (ADR-0001) | drafted |
 | Architecture + build spec | **ratified** ([`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md); ADR-0002, ADR-0003). Original prompt retained as lineage ([`docs/SPEC-HANDOFF.md`](docs/SPEC-HANDOFF.md)) |
-| Artifact schemas | _specified, not yet built_ - Phase 1 M1 ([`schemas/`](schemas/), [`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) 3) |
-| Verification kernel (claim verifier) | _specified, not yet built - Phase 1 flagship_ ([`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) 4) |
-| Adapter interfaces | _specified, not yet built_ (`ForgeAdapter`, Phase 1 4; others Phase 2) |
-| CLI / forge App | _specified, not yet built_ - App-as-identity in Phase 1 (ADR-0002) |
+| Artifact schemas | **shipped** - QRM-1 M1: zod source of truth -> generated + committed JSON Schema + CI drift check ([`packages/contracts`](packages/contracts/)) |
+| Verification kernel (claim verifier) | **shipped** - QRM-1 M2; Phase 1 flagship: extract / verify / ledger / tier-floor / diff-coverage ([`packages/kernel`](packages/kernel/)) |
+| Adapter interfaces | **`ForgeAdapter` shipped** - LocalGitForge (offline), GitHubForge (Octokit), MemoryForge (fixtures). Other adapters Phase 2. |
+| CLI / forge App | **CLI shipped** (`quorum verify` / `tier` / `validate`); **forge App (App-as-identity)** _specified, not yet built_ - M3 (ADR-0002) |
 | Worked example | _placeholder_ ([`examples/`](examples/)) |
 | Glossary | _stub_ ([`docs/GLOSSARY.md`](docs/GLOSSARY.md)) |
 
@@ -88,13 +88,13 @@ Professional roles, with beginner-facing labels in parentheses:
 ├-- schemas/                   # JSON Schema for every structured artifact (placeholder)
 ├-- examples/                  # complete worked-example project (placeholder)
 └-- .github/
-    ├-- workflows/             # CI Actions (none yet - Phase 1+)
+    ├-- workflows/             # ci.yml: build + test + drift (enforcement Gate Action lands in M3)
     └-- ISSUE_TEMPLATE/        # issue templates (none yet)
 ```
 
 ## Getting started
 
-Nothing to install yet. To follow or contribute to the design: read [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md), then [`docs/adr/ADR-0001-founding-decisions.md`](docs/adr/ADR-0001-founding-decisions.md), then the ratified architecture in [`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) (with [`ADR-0002`](docs/adr/ADR-0002-packaging-and-layered-architecture.md) and [`ADR-0003`](docs/adr/ADR-0003-autonomy-and-risk-tiers.md)). A quickstart lands when Phase 1 ships.
+The kernel and CLI build and run from source today (Node 22+): `npm install`, `npm run build`, then `node packages/kernel/dist/cli.js verify --local --task <id>` on a feature branch. A packaged quickstart lands when Phase 1 completes (the M3 Gate). To follow the design: read [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md), then [`docs/adr/ADR-0001-founding-decisions.md`](docs/adr/ADR-0001-founding-decisions.md), then the ratified architecture in [`docs/SPEC-PHASE-1.md`](docs/SPEC-PHASE-1.md) (with [`ADR-0002`](docs/adr/ADR-0002-packaging-and-layered-architecture.md) and [`ADR-0003`](docs/adr/ADR-0003-autonomy-and-risk-tiers.md)). A quickstart lands when Phase 1 ships.
 
 ## Lineage
 
