@@ -90,22 +90,49 @@ describe.skipIf(!haveBuild)("quorum CLI", () => {
     writeFileSync(join(repo, ".quorum/manifests/QRM-T.json"), manifest("QRM-T"));
   });
 
-  it("exit 0: a truthful claim verifies clean", () => {
+  it("exit 0: empty self-delta (HEAD == merge-base) declines cleanly instead of failing", () => {
+    // A branch-delta-scoped claim that WOULD resolve to `failed` on an empty
+    // range if verification ran. The repo HEAD sits on `main` with no feature
+    // branch, so merge-base(HEAD, main) == HEAD: the M2.1 empty-delta case.
     writeFileSync(
       join(repo, ".quorum/claims/QRM-T.jsonl"),
-      `${claim({ type: "file_created", subject: { path: "src/a.ts" } })}\n`,
+      `${claim({ type: "file_modified", subject: { path: "src/a.ts" } })}\n`,
     );
     const r = runCli(["verify", "--local", "--task", "QRM-T"], repo);
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("Quorum:");
+    expect(r.stdout).toContain("no delta to verify");
+    expect(r.stdout).not.toContain("FAILED");
+  });
+
+  it("exit 0: a truthful claim verifies clean (real delta vs main)", () => {
+    git(["checkout", "-B", "feat-ok", "main"], repo);
+    writeFileSync(join(repo, "src/created.ts"), "export const c = 1;\n");
+    git(["add", "src/created.ts"], repo);
+    git(["commit", "-m", "add created.ts"], repo);
+    writeFileSync(
+      join(repo, ".quorum/claims/QRM-T.jsonl"),
+      `${claim({ type: "file_created", subject: { path: "src/created.ts" } })}\n`,
+    );
+    const r = runCli(["verify", "--local", "--task", "QRM-T"], repo);
+    git(["checkout", "main"], repo); // restore shared fixture state
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("verified");
   });
 
   it("exit 1: a fabricated claim blocks (file does not exist at head)", () => {
+    git(["checkout", "-B", "feat-bad", "main"], repo);
+    writeFileSync(join(repo, "src/real.ts"), "export const r = 1;\n");
+    git(["add", "src/real.ts"], repo);
+    git(["commit", "-m", "add real.ts"], repo);
+    // Cover the real change truthfully, then assert a fabricated creation too:
+    // the verdict must block on the fabricated claim, not on coverage.
     writeFileSync(
       join(repo, ".quorum/claims/QRM-T.jsonl"),
-      `${claim({ type: "file_created", subject: { path: "src/ghost.ts" } })}\n`,
+      `${claim({ type: "file_created", subject: { path: "src/real.ts" } })}\n` +
+        `${claim({ id: "clm_000000000002", type: "file_created", subject: { path: "src/ghost.ts" } })}\n`,
     );
     const r = runCli(["verify", "--local", "--task", "QRM-T"], repo);
+    git(["checkout", "main"], repo);
     expect(r.status).toBe(1);
     expect(r.stdout).toContain("FAILED");
   });

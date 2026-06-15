@@ -171,6 +171,25 @@ async function cmdVerify(args: string[]): Promise<void> {
   // Repo state + tier floor.
   const head = "HEAD";
   const mergeBase = resolveMergeBase(flags["base"], cwd); // FIX 7/8/11/13
+
+  // M2.1: empty self-delta. When HEAD *is* the merge-base (running on `main`, or
+  // re-running a squash-merged task whose branch commits are no longer in
+  // history), there is no branch delta to verify. Branch-delta-scoped claims
+  // (file_modified, commit_pushed) would resolve to `failed` against the empty
+  // range and emit a blocking verdict that actually means "nothing to check" -
+  // alarm-fatigue noise we are told to ignore, which is itself a bug. Verification
+  // is a PRE-MERGE gate against a base, so the correct behavior on an empty delta
+  // is to DECLINE cleanly (exit 0, distinct message), not to run claims and fail.
+  const headSha = gitOut(["rev-parse", head], cwd)?.trim();
+  if (headSha && headSha === mergeBase) {
+    process.stdout.write(
+      `Quorum: no delta to verify for ${task} - HEAD is at the merge-base ` +
+        `(empty self-delta). Verification is a pre-merge gate run against a base; ` +
+        `there is nothing to check here. Run it on a feature branch against its base.\n`,
+    );
+    process.exit(EXIT.pass);
+  }
+
   // FIX 10 + FIX 12: --name-status -M surfaces both sides of a rename; -z gives
   // raw NUL-delimited paths so non-ASCII names aren't C-quoted (which would
   // mis-split and understate the tier floor).
