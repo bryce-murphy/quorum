@@ -1,0 +1,17 @@
+{
+  "schema": "quorum.task/v1",
+  "id": "QRM-3.0",
+  "title": "Floor agent operating-config to T3; bank PMN-002 (hand-back fidelity)",
+  "tier_proposed": "T3",
+  "tier_effective": null,
+  "acceptance": [
+    "policy.json floors agent operating-config paths to T3 across Claude, Codex (AGENTS + .agents/skills), Cursor, and Copilot/VS Code agent + MCP config - including nested occurrences and bare symlink/gitlink directory paths (.claude, .codex, .cursor, .vscode, .agents, and .github with its agents/instructions subdirs); agent/instruction definitions matched by filename so benign files are not over-floored",
+    "committed regression test asserts the floor against the real .quorum/policy.json: every agent-config path including bare directory paths resolves to T3 and every near-miss / wrong-directory path resolves to the default floor; full suite green",
+    "PMN-002 committed including the termination-status clause",
+    "quorum verify --local --task QRM-3.0 on the branch yields a clean verified ledger covering every changed path at T3",
+    "SCOPE: floors are path/name-based and provisional - they do NOT catch agent-config hidden behind a symlink or gitlink at an arbitrary path. This general tier-floor-mechanism residual is deferred to QRM-3.1 (mode-aware floor), which blocks treating the L2 Gate as complete tier-floor enforcement. This PR does not claim a bypass-complete floor."
+  ],
+  "branch": "qrm-3.0-agent-config-floor-pmn002",
+  "state": "handed_back",
+  "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
+}
