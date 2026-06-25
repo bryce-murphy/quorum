@@ -13,6 +13,6 @@
     "the L2 Gate must run mode-bearing diff (local git diff --raw, or an equivalent mode-carrying GitHubForge.compare) before tier-floor enforcement is treated as real; GitHubForge mode-parity implementation may be deferred but the requirement may not"
   ],
   "branch": "qrm-3.1-mode-aware-floor",
-  "state": "handed_back",
+  "state": "merged",
   "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
 }
