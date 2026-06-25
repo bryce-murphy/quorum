@@ -1,4 +1,5 @@
 import type { ReviewSurface } from "../types.js";
+import type { DiffEntry } from "../diff.js";
 
 /**
  * Uniform response envelope for every forge lookup.
@@ -56,7 +57,9 @@ export type CompareStatus = "ahead" | "behind" | "identical" | "diverged";
 
 export interface CompareResult {
   readonly status: CompareStatus;
-  readonly changedPaths: readonly string[];
+  /** Mode-bearing changed entries (single source). Derive the flat path list
+   *  with `changedPaths(entries)`; the tier floor also reads each entry's mode. */
+  readonly changedPaths: readonly DiffEntry[];
 }
 
 /**

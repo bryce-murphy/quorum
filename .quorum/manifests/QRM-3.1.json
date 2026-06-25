@@ -9,9 +9,10 @@
     "the tier floor floors any changed entry whose new mode is 120000 (symlink) or 160000 (gitlink) to T3 unconditionally, independent of path-glob matching",
     "regression test: a symlink or gitlink at an arbitrary path (e.g. packages/app) that carries reserved/agent-config content floors to T3 even when no path-glob matches; the QRM-3.0 red-team R2/R3 reproductions are covered",
     "BLOCKER: the L2 Gate may NOT be treated as complete tier-floor enforcement until this lands - this is the general counterpart to QRM-3.0's path-based floors",
-    "on landing, hand-added bare symlink-directory rules in .quorum/policy.json (**/.claude, **/.codex, **/.cursor, **/.vscode, **/.agents*, bare .github dirs) become redundant and are candidates for retirement (principle 11)"
+    "on landing, hand-added bare symlink-directory rules in .quorum/policy.json (**/.claude, **/.codex, **/.cursor, **/.vscode, **/.agents*, bare .github dirs) become redundant and are candidates for retirement (principle 11)",
+    "the L2 Gate must run mode-bearing diff (local git diff --raw, or an equivalent mode-carrying GitHubForge.compare) before tier-floor enforcement is treated as real; GitHubForge mode-parity implementation may be deferred but the requirement may not"
   ],
   "branch": "qrm-3.1-mode-aware-floor",
-  "state": "planned",
+  "state": "handed_back",
   "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
 }

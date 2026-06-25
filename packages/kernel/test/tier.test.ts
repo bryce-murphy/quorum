@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import type { Policy } from "@quorum/contracts";
 import { computeTierFloor } from "../src/tier/floor.js";
+import type { DiffEntry } from "../src/diff.js";
 import { globMatches, normalizePath, PathNormalizationError } from "../src/tier/glob.js";
+
+/** Ordinary (regular-file, mode 100644) changed entries for these path-glob
+ *  tests - the mode floor is exercised separately in mode-floor.test.ts. */
+const E = (...paths: string[]): DiffEntry[] =>
+  paths.map((path) => ({ status: "M", oldMode: "100644", newMode: "100644", path }));
 
 describe("globMatches", () => {
   it("** crosses directory separators", () => {
@@ -39,20 +45,20 @@ const policy: Policy = {
 
 describe("computeTierFloor", () => {
   it("returns default floor when nothing matches", () => {
-    expect(computeTierFloor(["src/app.ts", "README.md"], policy)).toBe("T0");
+    expect(computeTierFloor(E("src/app.ts", "README.md"), policy)).toBe("T0");
   });
 
   it("raises to T3 for enforcement-machinery paths (schemas/**)", () => {
-    expect(computeTierFloor(["src/app.ts", "schemas/claim.schema.json"], policy)).toBe("T3");
+    expect(computeTierFloor(E("src/app.ts", "schemas/claim.schema.json"), policy)).toBe("T3");
   });
 
   it("raises to T3 for workflow + lockfile changes", () => {
-    expect(computeTierFloor([".github/workflows/ci.yml"], policy)).toBe("T3");
-    expect(computeTierFloor(["package-lock.json"], policy)).toBe("T3");
+    expect(computeTierFloor(E(".github/workflows/ci.yml"), policy)).toBe("T3");
+    expect(computeTierFloor(E("package-lock.json"), policy)).toBe("T3");
   });
 
   it("takes the max over many paths", () => {
-    expect(computeTierFloor(["docs/x.md", "schemas/policy.schema.json", "src/y.ts"], policy)).toBe("T3");
+    expect(computeTierFloor(E("docs/x.md", "schemas/policy.schema.json", "src/y.ts"), policy)).toBe("T3");
   });
 });
 
@@ -89,16 +95,16 @@ describe("computeTierFloor - floor-evasion resistance (FIX A)", () => {
       "packages//gate-action///run.ts",
       "deep/nested/dir/package-lock.json",
     ]) {
-      expect(computeTierFloor([path], policy)).toBe("T3");
+      expect(computeTierFloor(E(path), policy)).toBe("T3");
     }
   });
 
   it("matches case-insensitively so case is not an evasion vector", () => {
-    expect(computeTierFloor([".GitHub/Workflows/Deploy.yml"], policy)).toBe("T3");
-    expect(computeTierFloor(["Schemas/Claim.Schema.json"], policy)).toBe("T3");
+    expect(computeTierFloor(E(".GitHub/Workflows/Deploy.yml"), policy)).toBe("T3");
+    expect(computeTierFloor(E("Schemas/Claim.Schema.json"), policy)).toBe("T3");
   });
 
   it("throws (does not silently fall through) on a traversal path", () => {
-    expect(() => computeTierFloor(["../../etc/passwd"], policy)).toThrow(PathNormalizationError);
+    expect(() => computeTierFloor(E("../../etc/passwd"), policy)).toThrow(PathNormalizationError);
   });
 });

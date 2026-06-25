@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { sha256 } from "../hash.js";
+import { parseRawDiff } from "../diff.js";
 import {
   absent,
   ok,
@@ -65,14 +66,34 @@ export class LocalGitForge implements ForgeAdapter {
   }
 
   async getFile(ref: string, path: string): Promise<ForgeResponse<FileContent>> {
+    // QRM-3.1 P1: decide by TREE MODE, not object type. A gitlink (mode 160000)
+    // is NEVER file content - even a malformed/hostile entry whose recorded sha
+    // points at a blob, where `cat-file -t` would wrongly answer "blob" and
+    // spuriously content-cover a submodule change at T3. The mode is authoritative.
+    const mode = this.treeMode(ref, path);
+    if (mode === "160000") return absent();
     // FIX 2: require an actual blob. A tree (directory) at this path is not file
-    // content and must not verify a file claim.
+    // content and must not verify a file claim. Symlinks (mode 120000) ARE blobs
+    // - the target string - and remain readable; ordinary blobs unchanged.
     const objType = this.git(["cat-file", "-t", `${ref}:${path}`]);
     if (objType === null || objType.trim() !== "blob") return absent();
     const bytes = this.gitBytes(["cat-file", "-p", `${ref}:${path}`]);
     if (bytes === null) return absent();
     // Hash the raw bytes; expose a UTF-8 view for display only.
     return ok({ content: bytes.toString("utf8"), sha256: sha256(bytes) });
+  }
+
+  /** The git tree mode (6 octal digits) recorded for `path` at `ref`, or null if
+   *  the path is absent. `git ls-tree` reports the entry's mode as its first
+   *  field, which - unlike object-type resolution - cannot be spoofed by a
+   *  malformed gitlink whose sha points at a blob. */
+  private treeMode(ref: string, path: string): string | null {
+    const out = this.git(["ls-tree", ref, "--", path]);
+    if (out === null) return null;
+    const line = out.split("\n").find((l) => l.trim() !== "");
+    if (line === undefined) return null;
+    const mode = line.split(/\s+/)[0];
+    return mode !== undefined && /^\d{6}$/.test(mode) ? mode : null;
   }
 
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {
@@ -105,39 +126,12 @@ export class LocalGitForge implements ForgeAdapter {
   }
 
   async compare(base: string, head: string): Promise<ForgeResponse<CompareResult>> {
-    // FIX 10 + FIX 12: --name-status -M surfaces both sides of a rename; -z emits
-    // raw NUL-delimited paths so non-ASCII names aren't C-quoted (which would
-    // mis-split and let a floored path read as a different tier).
-    const out = this.git(["diff", "--name-status", "-M", "-z", `${base}..${head}`]);
+    // FIX 10 + FIX 12 + QRM-3.1: --raw -M surfaces both sides of a rename AND the
+    // git object mode per side; -z emits raw NUL-delimited paths so non-ASCII
+    // names aren't C-quoted (which would mis-split and let a floored path read as
+    // a different tier). parseRawDiff throws (fail closed) on a malformed stream.
+    const out = this.git(["diff", "--raw", "-M", "-z", `${base}..${head}`]);
     if (out === null) return unsupported();
-    const changedPaths = parseNameStatus(out);
-    return ok({ status: base === head ? "identical" : "ahead", changedPaths });
+    return ok({ status: base === head ? "identical" : "ahead", changedPaths: parseRawDiff(out) });
   }
-}
-
-/**
- * Parse `git diff --name-status -M -z` output into a flat path list. The -z
- * stream is NUL-delimited tokens: a status token (`A`/`M`/`D`/`R100`/`C75`)
- * followed by one path, except rename/copy statuses are followed by TWO paths
- * (old then new); both are included. NUL delimiting keeps non-ASCII paths intact
- * (no C-quoting), which is required for correct tier-floor matching.
- */
-export function parseNameStatus(out: string): string[] {
-  const NUL = String.fromCharCode(0);
-  const tokens = out.split(NUL).filter((t) => t !== "");
-  const paths: string[] = [];
-  let i = 0;
-  while (i < tokens.length) {
-    const status = tokens[i++]!;
-    if (status.startsWith("R") || status.startsWith("C")) {
-      const oldPath = tokens[i++];
-      const newPath = tokens[i++];
-      if (oldPath) paths.push(oldPath);
-      if (newPath) paths.push(newPath);
-    } else {
-      const path = tokens[i++];
-      if (path) paths.push(path);
-    }
-  }
-  return paths;
 }

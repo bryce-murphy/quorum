@@ -3,34 +3,10 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LocalGitForge, parseNameStatus } from "../src/forge/local-git.js";
+import { LocalGitForge } from "../src/forge/local-git.js";
 
-// FIX 10 + FIX 12 - NUL-delimited (-z) records; rename/copy carry old + new.
-const NUL = String.fromCharCode(0);
-const z = (...tokens: string[]) => tokens.join(NUL) + NUL;
-
-describe("parseNameStatus (rename-aware, NUL-delimited)", () => {
-  it("includes both old and new paths for a rename", () => {
-    const out = z("A", "src/new.ts", "M", "src/edited.ts", "R100", "schemas/x.json", "docs/x.json");
-    expect(parseNameStatus(out)).toEqual([
-      "src/new.ts",
-      "src/edited.ts",
-      "schemas/x.json",
-      "docs/x.json",
-    ]);
-  });
-
-  it("handles deletes and copies", () => {
-    const out = z("D", "old.ts", "C75", "a.ts", "b.ts");
-    expect(parseNameStatus(out)).toEqual(["old.ts", "a.ts", "b.ts"]);
-  });
-
-  it("keeps non-ASCII paths intact (no C-quoting / mis-split)", () => {
-    const cafe = `schemas/caf${String.fromCharCode(0xe9)}.schema.json`; // U+00E9
-    const out = z("A", cafe);
-    expect(parseNameStatus(out)).toEqual([cafe]);
-  });
-});
+// The raw-diff parse matrix (rename-aware, mode-bearing, NUL-delimited, fail
+// closed) lives in diff.test.ts. This file covers the LocalGitForge integration.
 
 describe("LocalGitForge - blob requirement (FIX 2) and in-delta commits (FIX 3)", () => {
   let repo: string;

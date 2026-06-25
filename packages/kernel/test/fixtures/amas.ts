@@ -4,7 +4,16 @@
 import type { Claim } from "@quorum/contracts";
 import { ClaimSchema } from "@quorum/contracts";
 import { sha256 } from "../../src/hash.js";
+import type { DiffEntry } from "../../src/diff.js";
 import type { MemoryForgeData } from "../../src/forge/memory.js";
+
+/** An ordinary (non-symlink, non-gitlink) modified-file diff entry for fixtures. */
+const modEntry = (path: string): DiffEntry => ({
+  status: "M",
+  oldMode: "100644",
+  newMode: "100644",
+  path,
+});
 
 let seq = 0;
 /** Build a valid claim with sane defaults; throws if the result is malformed. */
@@ -39,7 +48,7 @@ export const subShapeB = {
   forge: {
     files: { HEAD: { "src/found.ts": REAL_FINDING } },
     commits: [],
-    compares: { "BASE..HEAD": { status: "ahead", changedPaths: ["src/found.ts"] } },
+    compares: { "BASE..HEAD": { status: "ahead", changedPaths: [modEntry("src/found.ts")] } },
   } satisfies MemoryForgeData,
   ctx: { head: "HEAD", mergeBase: "BASE" },
   phantomCitationRealContent: mkClaim({
@@ -88,7 +97,7 @@ export const postHandback = {
         ],
       },
     },
-    compares: { "BASE..HEAD": { status: "ahead", changedPaths: ["src/feature.ts"] } },
+    compares: { "BASE..HEAD": { status: "ahead", changedPaths: [modEntry("src/feature.ts")] } },
   } satisfies MemoryForgeData,
   ctx: { head: "HEAD", mergeBase: "BASE", identity: "quorum-gate[bot]" },
   // (1) poll reviewer output

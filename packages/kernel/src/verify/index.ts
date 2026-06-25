@@ -1,5 +1,6 @@
 import type { Claim, ClaimResult } from "@quorum/contracts";
 import type { ForgeAdapter, ForgeResponse } from "../forge/adapter.js";
+import { changedPaths } from "../diff.js";
 import type { VerifyContext } from "../types.js";
 
 type Status = ClaimResult["status"];
@@ -248,10 +249,20 @@ async function findContentMatch(
   ctx: VerifyContext,
   expectedSha256: string,
 ): Promise<string | null> {
-  const cmp = await forge.compare(ctx.mergeBase, ctx.head);
+  // GitHubForge.compare() throws (QRM-3.1 P2 fail-closed). A throw here means
+  // "no content scan possible" - the correct answer is no match found (null),
+  // not a propagated exception that crashes the entire verify path.
+  let cmp: ForgeResponse<import("../forge/adapter.js").CompareResult>;
+  try {
+    cmp = await forge.compare(ctx.mergeBase, ctx.head);
+  } catch {
+    return null;
+  }
   if (cmp.kind !== "ok") return null;
   const target = expectedSha256.toLowerCase();
-  for (const path of cmp.value.changedPaths) {
+  // Derive the flat path set from the mode-bearing entries; for ordinary files
+  // this is byte-identical to the pre-QRM-3.1 path list.
+  for (const path of changedPaths(cmp.value.changedPaths)) {
     const f: ForgeResponse<{ sha256: string }> = await forge.getFile(ctx.head, path);
     if (f.kind === "ok" && f.value.sha256.toLowerCase() === target) return path;
   }

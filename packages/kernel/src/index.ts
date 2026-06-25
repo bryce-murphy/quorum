@@ -12,6 +12,8 @@ export { applyStrictFailClosed, computeUncoveredPaths } from "./gate.js";
 export { renderLedger, renderHeadline } from "./ledger/render.js";
 
 export { computeTierFloor } from "./tier/floor.js";
+export { parseRawDiff, changedPaths, DiffParseError } from "./diff.js";
+export type { DiffEntry } from "./diff.js";
 export {
   globMatches,
   globToRegExp,

@@ -15,7 +15,8 @@ import { buildLedger } from "./ledger/build.js";
 import { renderLedger } from "./ledger/render.js";
 import { computeTierFloor } from "./tier/floor.js";
 import { validateArtifact } from "./validate.js";
-import { LocalGitForge, parseNameStatus } from "./forge/local-git.js";
+import { LocalGitForge } from "./forge/local-git.js";
+import { changedPaths, parseRawDiff } from "./diff.js";
 import { applyStrictFailClosed, computeUncoveredPaths } from "./gate.js";
 
 /** Exit codes (SPEC 4): 0 pass - 1 claim failure - 2 protocol/parse failure. */
@@ -190,13 +191,15 @@ async function cmdVerify(args: string[]): Promise<void> {
     process.exit(EXIT.pass);
   }
 
-  // FIX 10 + FIX 12: --name-status -M surfaces both sides of a rename; -z gives
-  // raw NUL-delimited paths so non-ASCII names aren't C-quoted (which would
-  // mis-split and understate the tier floor).
-  const diffRaw = gitOut(["diff", "--name-status", "-M", "-z", `${mergeBase}..${head}`], cwd) ?? "";
-  const diffPaths = parseNameStatus(diffRaw);
+  // FIX 10 + FIX 12 + QRM-3.1: --raw -M surfaces both sides of a rename AND the
+  // per-side git object mode (so the floor can react to symlink/gitlink modes);
+  // -z gives raw NUL-delimited paths so non-ASCII names aren't C-quoted (which
+  // would mis-split and understate the tier floor). parseRawDiff fails closed.
+  const diffRaw = gitOut(["diff", "--raw", "-M", "-z", `${mergeBase}..${head}`], cwd) ?? "";
+  const diffEntries = parseRawDiff(diffRaw);
+  const diffPaths = changedPaths(diffEntries);
   const policy = loadPolicy(cwd);
-  const tierEffective = maxTier(tierProposed, computeTierFloor(diffPaths, policy));
+  const tierEffective = maxTier(tierProposed, computeTierFloor(diffEntries, policy));
 
   const forge = new LocalGitForge({ cwd, head, mergeBase });
   const rawResults = await verifyClaims(extracted.claims, forge, { head, mergeBase, branch });
@@ -233,12 +236,13 @@ function cmdTier(args: string[]): void {
   const range = flags["diff"];
   if (!range) fail("tier requires --diff <range>", EXIT.protocol);
   const cwd = process.cwd();
-  // FIX 10 + FIX 12: rename-aware and NUL-delimited (non-ASCII paths intact).
-  const diffOut = gitOut(["diff", "--name-status", "-M", "-z", range], cwd);
+  // FIX 10 + FIX 12 + QRM-3.1: rename-aware, mode-bearing (--raw), NUL-delimited
+  // (non-ASCII paths intact). parseRawDiff fails closed on a malformed stream.
+  const diffOut = gitOut(["diff", "--raw", "-M", "-z", range], cwd);
   if (diffOut === null) fail(`could not compute diff for range '${range}'`, EXIT.protocol);
-  const diffPaths = parseNameStatus(diffOut);
+  const diffEntries = parseRawDiff(diffOut);
   const policy = loadPolicy(cwd);
-  process.stdout.write(`${computeTierFloor(diffPaths, policy)}\n`);
+  process.stdout.write(`${computeTierFloor(diffEntries, policy)}\n`);
   process.exit(EXIT.pass);
 }
 

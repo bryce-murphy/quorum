@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { Octokit } from "@octokit/rest";
 import { GitHubForge } from "../src/forge/github.js";
+import { verifyClaim } from "../src/verify/index.js";
+import { mkClaim } from "./fixtures/amas.js";
 
 // Minimal fake Octokit that simulates real pagination: each endpoint returns a
 // page slice keyed on (page, per_page), and `paginate` walks pages until a short
@@ -76,5 +78,50 @@ describe("GitHubForge.getReviewsAllEndpoints", () => {
     expect(res.value[0]?.id).toBe("review:2");
     // The dropped null review must not appear first with an empty timestamp.
     expect(res.value.some((r) => r.submitted_at === "")).toBe(false);
+  });
+});
+
+describe("GitHubForge.compare - fail closed (QRM-3.1 P2)", () => {
+  it("throws rather than returning mode-less / rename-lossy entries", async () => {
+    // Mode-bearing GitHub compare is deferred; until it lands, compare() must NOT
+    // hand back partial entries that would silently under-floor a tier decision.
+    await expect(forgeWith({}).compare("BASE", "HEAD")).rejects.toThrow(
+      /mode-bearing compare not implemented for GitHubForge/,
+    );
+  });
+
+  it("compare() throw is caught by findContentMatch: commit_pushed resolves failed, not unhandled exception", async () => {
+    // Sub-shape B: a commit_pushed with expected.sha256 triggers findContentMatch,
+    // which calls forge.compare(). When compare() throws (GitHubForge P2), the
+    // throw must be swallowed (null = no match), and the claim resolves to a
+    // normal `failed` verdict - not an unhandled exception that crashes verify.
+    const forge = new GitHubForge({
+      token: "x",
+      owner: "o",
+      repo: "r",
+      head: "HEAD",
+      octokit: {
+        // resolveCommit: getCommit resolves (commit exists) but mergeBase not
+        // set, so the fallback compare-for-status path is reached. Make getCommit
+        // succeed by not throwing, then have compareCommitsWithBasehead throw.
+        repos: {
+          getCommit: async () => ({ data: { sha: "deadbeefdeadbeef" } }),
+          compareCommitsWithBasehead: async () => { throw Object.assign(new Error("not found"), { status: 404 }); },
+        },
+        paginate: async () => [],
+        pulls: { listReviews: async () => ({ data: [] }), listReviewComments: async () => ({ data: [] }) },
+        issues: { listComments: async () => ({ data: [] }) },
+        checks: { listForRef: async () => ({ data: { check_runs: [] } }) },
+      } as unknown as Octokit,
+    });
+    const claim = mkClaim({
+      type: "commit_pushed",
+      subject: { sha: "deadbeefdeadbeef" },
+      expected: { sha256: "a".repeat(64) }, // triggers findContentMatch
+    });
+    // Must not throw; must resolve to a normal failed result.
+    const result = await verifyClaim(claim, forge, { head: "HEAD", mergeBase: "BASE" });
+    expect(result.status).toBe("failed");
+    expect(result.evidence["content_match"]).toBe(false);
   });
 });
