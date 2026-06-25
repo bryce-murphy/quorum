@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Policy } from "@quorum/contracts";
 import { computeTierFloor } from "../src/tier/floor.js";
+import type { DiffEntry } from "../src/diff.js";
+
+/** A single ordinary (regular-file, mode 100644) changed entry - this suite
+ *  exercises PATH-glob flooring, so modes must be ordinary or the QRM-3.1 mode
+ *  floor would mask the near-miss assertions. */
+const entry = (path: string): DiffEntry[] => [
+  { status: "M", oldMode: "100644", newMode: "100644", path },
+];
 
 // Load the REAL committed policy from the repo root (test file lives at
 // packages/kernel/test/, so the repo root is three levels up). The point of
@@ -87,13 +95,13 @@ const nearMisses = [
 describe("agent operating-config tier floor (real committed policy)", () => {
   it("floors every agent-config path to T3", () => {
     for (const path of mustFloorToT3) {
-      expect(computeTierFloor([path], policy), `${path} should floor to T3`).toBe("T3");
+      expect(computeTierFloor(entry(path), policy), `${path} should floor to T3`).toBe("T3");
     }
   });
 
   it("does not over-match near-miss paths (they stay at the default floor)", () => {
     for (const path of nearMisses) {
-      const floor = computeTierFloor([path], policy);
+      const floor = computeTierFloor(entry(path), policy);
       expect(floor, `${path} should resolve to the default floor`).toBe(policy.default_floor);
       expect(floor, `${path} must not be floored to T3`).not.toBe("T3");
     }

@@ -7,7 +7,6 @@ import {
   type CheckRun,
   type CommitInfo,
   type CompareResult,
-  type CompareStatus,
   type FileContent,
   type ForgeAdapter,
   type ForgeResponse,
@@ -93,12 +92,21 @@ export class GitHubForge implements ForgeAdapter {
         throw err;
       }
     }
-    // No merge-base configured: fall back to reachability from head.
-    const cmp = await this.compare(sha, this.head);
-    if (cmp.kind === "ok" && (cmp.value.status === "ahead" || cmp.value.status === "identical")) {
-      return ok({ sha });
+    // No merge-base configured: fall back to reachability from head. Call the
+    // compare API directly for STATUS only - the public compare() is fail-closed
+    // (QRM-3.1 P2) and must not be routed through for tier/coverage.
+    try {
+      const res = await this.api.repos.compareCommitsWithBasehead({
+        owner: this.owner,
+        repo: this.repo,
+        basehead: `${sha}...${this.head}`,
+      });
+      const status = res.data.status;
+      return status === "ahead" || status === "identical" ? ok({ sha }) : absent();
+    } catch (err) {
+      if (isNotFound(err)) return absent();
+      throw err;
     }
-    return absent();
   }
 
   async getPR(n: number): Promise<ForgeResponse<PrInfo>> {
@@ -188,20 +196,18 @@ export class GitHubForge implements ForgeAdapter {
     }
   }
 
-  async compare(base: string, head: string): Promise<ForgeResponse<CompareResult>> {
-    try {
-      const res = await this.api.repos.compareCommitsWithBasehead({
-        owner: this.owner,
-        repo: this.repo,
-        basehead: `${base}...${head}`,
-      });
-      return ok({
-        status: res.data.status as CompareStatus,
-        changedPaths: (res.data.files ?? []).map((f) => f.filename),
-      });
-    } catch (err) {
-      if (isNotFound(err)) return absent();
-      throw err;
-    }
+  // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
+  async compare(_base: string, _head: string): Promise<ForgeResponse<CompareResult>> {
+    // QRM-3.1 P2: mode-bearing GitHub compare is DEFERRED. The REST compare API
+    // returns neither git object modes (symlink 120000 / gitlink 160000) nor a
+    // rename's source path in a form this adapter maps faithfully - so building
+    // DiffEntry[] here would UNDER-FLOOR any tier/coverage decision that consumed
+    // it (modes lost, rename old-paths dropped). Fail closed: throw rather than
+    // return silently-wrong entries. The manifest requires real mode-bearing
+    // compare before the Gate treats tier-floor enforcement as complete; the CLI
+    // is --local only, so nothing currently routes tier decisions through here.
+    throw new Error(
+      "mode-bearing compare not implemented for GitHubForge (QRM-3.1 deferred; required before Gate enforcement)",
+    );
   }
 }
