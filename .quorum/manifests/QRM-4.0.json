@@ -1,0 +1,19 @@
+{
+  "schema": "quorum.task/v1",
+  "id": "QRM-4.0",
+  "title": "L2 Gate: enforce the tier floor as a required, deterministic merge gate",
+  "tier_proposed": "T3",
+  "tier_effective": null,
+  "acceptance": [
+    "quorum-verify wired as a required status check on protect-main; branch-protection approvals flipped 0->1; quorum-gate App-as-identity established (Owner-only setup, longest lead)",
+    "PREREQUISITE - authenticated base-policy read: the Gate's forge-mode path reads .quorum/policy.json from the authenticated PR base event (merge-base), never the PR head (forge-mode counterpart of QRM-3.2's local fix)",
+    "PREREQUISITE - mechanical branch-freshness: 'require branches up to date before merge' is enforced or consumed as an unspoofable forge signal, closing the stale-tightening residual from QRM-3.2's merge-base grading decision",
+    "PREREQUISITE - trusted verifier code: the Gate runs a pinned/base verifier version, NOT arbitrary PR-head code; a PR cannot alter the verifier that grades it (QRM-3.2 secures policy DATA, not verifier CODE)",
+    "PREREQUISITE - mode-bearing diff (QRM-3.1): the Gate consumes a mode-carrying diff (local git diff --raw, or an equivalent GitHubForge.compare) so symlink/gitlink floors hold in the enforcement path",
+    "PREREQUISITE - GitHubForge parity: GitHubForge.compare returns mode-bearing, rename-faithful DiffEntry[] (currently fails closed by throwing) before any forge-mode tier/coverage decision",
+    "the Gate is not claimed as complete tier-floor enforcement until every PREREQUISITE above is met (principle 2: do not claim enforcement not shipped)"
+  ],
+  "branch": "qrm-4.0-l2-gate",
+  "state": "planned",
+  "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
+}

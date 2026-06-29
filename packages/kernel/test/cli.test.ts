@@ -81,12 +81,16 @@ describe.skipIf(!haveBuild)("quorum CLI", () => {
     git(["config", "user.name", "Test"], repo);
     mkdirSync(join(repo, "src"), { recursive: true });
     writeFileSync(join(repo, "src/a.ts"), "hello\n");
+    // QRM-3.2: verify/tier grade against the policy at the MERGE-BASE, so the
+    // policy must be COMMITTED at the base (main), not merely present in the
+    // working tree. Feature branches fork from here and inherit this base policy.
+    mkdirSync(join(repo, ".quorum"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY);
     git(["add", "-A"], repo);
     git(["commit", "-m", "init"], repo);
 
     mkdirSync(join(repo, ".quorum/claims"), { recursive: true });
     mkdirSync(join(repo, ".quorum/manifests"), { recursive: true });
-    writeFileSync(join(repo, ".quorum/policy.json"), POLICY);
     writeFileSync(join(repo, ".quorum/manifests/QRM-T.json"), manifest("QRM-T"));
   });
 
@@ -143,12 +147,17 @@ describe.skipIf(!haveBuild)("quorum CLI", () => {
     expect(r.status).toBe(2);
   });
 
-  it("tier --diff resolves schemas/** to T3 (pure-local, no token)", () => {
+  // QRM-3.2: tier defaults to the merge-base delta + base policy (no --diff). A
+  // feature branch off main that adds a schemas/** path floors T3 from the base
+  // policy committed at the fork point.
+  it("tier resolves schemas/** to T3 by default (base policy, no token)", () => {
+    git(["checkout", "-B", "feat-tier", "main"], repo);
     mkdirSync(join(repo, "schemas"), { recursive: true });
     writeFileSync(join(repo, "schemas/x.json"), "{}\n");
     git(["add", "-A"], repo);
     git(["commit", "-m", "add schema"], repo);
-    const r = runCli(["tier", "--diff", "HEAD~1..HEAD"], repo);
+    const r = runCli(["tier"], repo);
+    git(["checkout", "main"], repo); // restore shared fixture state
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toBe("T3");
   });
@@ -225,6 +234,9 @@ describe.skipIf(!haveBuild)("quorum verify - --base ancestor validation (FIX 8)"
     git(["config", "user.name", "Test"], repo);
     mkdirSync(join(repo, "src"), { recursive: true });
     writeFileSync(join(repo, "src/a.ts"), "export const a = 1;\n");
+    // QRM-3.2: the policy is graded from the merge-base, so commit it at the base.
+    mkdirSync(join(repo, ".quorum"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY_EXEMPT);
     git(["add", "-A"], repo);
     git(["commit", "-m", "base (ancestor)"], repo); // main = true ancestor
 
