@@ -13,6 +13,6 @@
     "quorum verify --local --task QRM-3.2 yields a clean verified ledger covering every changed path at T3"
   ],
   "branch": "qrm-3.2-policy-from-base",
-  "state": "handed_back",
+  "state": "merged",
   "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
 }
