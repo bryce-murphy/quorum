@@ -1,0 +1,18 @@
+{
+  "schema": "quorum.task/v1",
+  "id": "QRM-3.2",
+  "title": "Evaluate tier-floor policy from the merge-base, not the PR head",
+  "tier_proposed": "T3",
+  "tier_effective": null,
+  "acceptance": [
+    "verify reads the ENTIRE policy object (rules, default_floor, exempt_paths) from the merge-base ref via loadPolicyAtRef(mergeBase); no working-tree policy read remains in the verify enforcement path",
+    "a PR that lowers/deletes a floor rule AND/OR self-exempts in its own .quorum/policy.json is still graded by the BASE policy on both axes (tier floor and coverage/exempt_paths)",
+    "tier reads base policy by default (merge-base resolved as in verify); head-policy inspection only via a labeled, non-default --policy=head diagnostic",
+    "fail closed: policy absent at base -> protocol error (no head fallback, no permissive default); malformed or schema-rejected base policy -> fatal protocol error",
+    "Gate prerequisites (authenticated base-policy read, mechanical branch-freshness, trusted/pinned verifier code) are tracked in QRM-4.0, not here - this PR secures policy DATA, not verifier CODE",
+    "quorum verify --local --task QRM-3.2 yields a clean verified ledger covering every changed path at T3"
+  ],
+  "branch": "qrm-3.2-policy-from-base",
+  "state": "handed_back",
+  "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
+}

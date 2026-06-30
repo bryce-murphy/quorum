@@ -33,7 +33,14 @@ function parseFlags(args: string[]): { flags: Record<string, string>; bools: Set
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
     if (!a.startsWith("--")) continue;
-    const key = a.slice(2);
+    const body = a.slice(2);
+    // Support `--key=value` (e.g. --policy=head) alongside `--key value`.
+    const eq = body.indexOf("=");
+    if (eq !== -1) {
+      flags[body.slice(0, eq)] = body.slice(eq + 1);
+      continue;
+    }
+    const key = body;
     const next = args[i + 1];
     if (next !== undefined && !next.startsWith("--")) {
       flags[key] = next;
@@ -111,6 +118,20 @@ function resolveMergeBase(explicitBase: string | undefined, cwd: string): string
   return mb;
 }
 
+/**
+ * QRM-3.2 (red-team R1): the CANONICAL trusted fork point, decoupled from the
+ * `--base`-overridable diff base. `--base` legitimately WIDENS the diff range,
+ * but it must never select WHICH POLICY grades the PR: the diff base and the
+ * policy ref are otherwise the same attacker-influenceable ref, so `--base
+ * <older>` would pick an older, WEAKER policy (e.g. from before `main` tightened
+ * a floor) and grade the PR against it - a clean clear on a file `main` now
+ * floors to T3. This always anchors to `main` (no `--base` override), exactly as
+ * the no-flag path does, and fails closed when there is no `main` anchor.
+ */
+function canonicalForkPoint(cwd: string): string {
+  return resolveMergeBase(undefined, cwd);
+}
+
 function readJson(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
 }
@@ -126,6 +147,38 @@ function loadPolicy(cwd: string): Policy {
   }
   const parsed = PolicySchema.safeParse(json);
   if (!parsed.success) fail(`policy.json invalid: ${parsed.error.issues[0]?.message}`, EXIT.protocol);
+  return parsed.data;
+}
+
+/**
+ * QRM-3.2 - load the WHOLE policy object from a git REF, not the working tree.
+ *
+ * The verify enforcement path grades a PR against the policy at the MERGE-BASE,
+ * never the PR head: a PR's own .quorum/policy.json (working tree / head) can
+ * delete a floor rule to self-lower its tier AND add itself to exempt_paths to
+ * self-exempt from coverage. loadPolicy(cwd) reads the head's policy and is the
+ * vulnerable source; this reads the blob at `ref` via git and validates it with
+ * the SAME rules as loadPolicy.
+ *
+ * FAIL CLOSED: if the blob is absent at `ref` (gitOut null) we refuse - never
+ * fall back to the head policy or a permissive default. Invalid JSON or a
+ * schema-rejected policy at the base is a fatal protocol error, identical to
+ * loadPolicy (a base policy the current schema rejects fails closed by design -
+ * a schema-evolution mismatch must block, not silently pass).
+ */
+function loadPolicyAtRef(ref: string, cwd: string): Policy {
+  const raw = gitOut(["show", `${ref}:.quorum/policy.json`], cwd);
+  if (raw === null) fail(`policy not found at ${ref}:.quorum/policy.json`, EXIT.protocol);
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    fail(`policy.json at ${ref} is not valid JSON`, EXIT.protocol);
+  }
+  const parsed = PolicySchema.safeParse(json);
+  if (!parsed.success) {
+    fail(`policy.json at ${ref} invalid: ${parsed.error.issues[0]?.message}`, EXIT.protocol);
+  }
   return parsed.data;
 }
 
@@ -171,7 +224,10 @@ async function cmdVerify(args: string[]): Promise<void> {
 
   // Repo state + tier floor.
   const head = "HEAD";
-  const mergeBase = resolveMergeBase(flags["base"], cwd); // FIX 7/8/11/13
+  // The DIFF base may honor --base (legitimate diff-widening, guarded against
+  // carving by resolveMergeBase). QRM-3.2 (red-team R1): the POLICY ref is a
+  // SEPARATE, canonical fork point that --base CANNOT move - see below.
+  const diffBase = resolveMergeBase(flags["base"], cwd); // FIX 7/8/11/13
 
   // M2.1: empty self-delta. When HEAD *is* the merge-base (running on `main`, or
   // re-running a squash-merged task whose branch commits are no longer in
@@ -182,7 +238,7 @@ async function cmdVerify(args: string[]): Promise<void> {
   // is a PRE-MERGE gate against a base, so the correct behavior on an empty delta
   // is to DECLINE cleanly (exit 0, distinct message), not to run claims and fail.
   const headSha = gitOut(["rev-parse", head], cwd)?.trim();
-  if (headSha && headSha === mergeBase) {
+  if (headSha && headSha === diffBase) {
     process.stdout.write(
       `Quorum: no delta to verify for ${task} - HEAD is at the merge-base ` +
         `(empty self-delta). Verification is a pre-merge gate run against a base; ` +
@@ -195,14 +251,25 @@ async function cmdVerify(args: string[]): Promise<void> {
   // per-side git object mode (so the floor can react to symlink/gitlink modes);
   // -z gives raw NUL-delimited paths so non-ASCII names aren't C-quoted (which
   // would mis-split and understate the tier floor). parseRawDiff fails closed.
-  const diffRaw = gitOut(["diff", "--raw", "-M", "-z", `${mergeBase}..${head}`], cwd) ?? "";
+  const diffRaw = gitOut(["diff", "--raw", "-M", "-z", `${diffBase}..${head}`], cwd) ?? "";
   const diffEntries = parseRawDiff(diffRaw);
   const diffPaths = changedPaths(diffEntries);
-  const policy = loadPolicy(cwd);
+  // QRM-3.2: grade against the BASE policy, not the PR head. This SAME object
+  // feeds BOTH the tier floor (below) AND coverage (policy.exempt_paths, further
+  // down) - a PR cannot self-lower its floor or self-exempt by editing its own
+  // working-tree .quorum/policy.json. Loaded AFTER the empty-self-delta decline
+  // so a run on `main` still declines before any policy read.
+  //
+  // QRM-3.2 (red-team R1): the policy ref is the CANONICAL fork point, NOT the
+  // --base-overridable diffBase - otherwise `--base <older>` could select an
+  // older, weaker policy. The diff still spans diffBase..HEAD (so --base's
+  // legitimate diff-widening is preserved); only the POLICY ref is pinned.
+  const policyRef = canonicalForkPoint(cwd);
+  const policy = loadPolicyAtRef(policyRef, cwd);
   const tierEffective = maxTier(tierProposed, computeTierFloor(diffEntries, policy));
 
-  const forge = new LocalGitForge({ cwd, head, mergeBase });
-  const rawResults = await verifyClaims(extracted.claims, forge, { head, mergeBase, branch });
+  const forge = new LocalGitForge({ cwd, head, mergeBase: diffBase });
+  const rawResults = await verifyClaims(extracted.claims, forge, { head, mergeBase: diffBase, branch });
   // FIX 4: fail closed on unverifiable forge-only claims in strict mode.
   const results = applyStrictFailClosed(rawResults, mode);
   // FIX 1 + FIX 9: every changed path must be covered by a qualifying claim
@@ -229,19 +296,64 @@ async function cmdVerify(args: string[]): Promise<void> {
 }
 
 // -- quorum tier ---------------------------------------------------------------
-// Pure-local: derives changed paths from git and the committed policy. No forge,
-// no token (SPEC 6 acceptance invokes it exactly this way).
+// Pure-local: derives changed paths from git and the policy. No forge, no token.
+//
+// QRM-3.2: enforcement-consistent by DEFAULT. tier resolves a merge-base exactly
+// like verify (--base <target>, default `main`, via resolveMergeBase), diffs
+// diffBase..HEAD, and reads the policy from the CANONICAL fork point
+// (loadPolicyAtRef(canonicalForkPoint)) - so `tier` reports what the gate would
+// enforce, not what the PR head wishes, and --base cannot swap in a weaker policy
+// (red-team R1: the policy ref is decoupled from the --base-overridable diff base).
+//
+// We do NOT parse a base side out of an arbitrary `--diff <range>`: an attacker-
+// chosen carving point is exactly the trust ambiguity resolveMergeBase exists to
+// remove. Head-policy inspection survives ONLY as `--policy=head`: an explicit,
+// labeled, NON-DEFAULT diagnostic that reads the working-tree policy and warns on
+// stderr that it does not reflect enforcement.
 function cmdTier(args: string[]): void {
-  const { flags } = parseFlags(args);
-  const range = flags["diff"];
-  if (!range) fail("tier requires --diff <range>", EXIT.protocol);
+  const { flags, bools } = parseFlags(args);
   const cwd = process.cwd();
+  const head = "HEAD";
+
+  // QRM-3.2 (Codex P2/P3): --diff is no longer supported and must be rejected, not
+  // silently ignored. Accepting it would appear to grade the requested range while
+  // actually grading mergeBase..HEAD - e.g. `tier --diff HEAD~1..HEAD` on main
+  // returns T0 for the empty self-delta, hiding a high-tier change in HEAD~1.
+  // P3: also catch the valueless spelling (`tier --diff`, `tier --diff --base main`)
+  // which parseFlags routes into bools, not flags.
+  if (flags["diff"] !== undefined || bools.has("diff")) {
+    fail(
+      "tier no longer supports --diff <range>; the diff is computed over <base>..HEAD. " +
+        "Use --base <target> to widen the diff, or --policy=head for a non-enforcement working-tree reading.",
+      EXIT.protocol,
+    );
+  }
+
+  const policySource = flags["policy"];
+  if (policySource !== undefined && policySource !== "head") {
+    fail(`unknown --policy '${policySource}' (only --policy=head is supported)`, EXIT.protocol);
+  }
+
+  const diffBase = resolveMergeBase(flags["base"], cwd); // FIX 7/8/11/13
   // FIX 10 + FIX 12 + QRM-3.1: rename-aware, mode-bearing (--raw), NUL-delimited
   // (non-ASCII paths intact). parseRawDiff fails closed on a malformed stream.
-  const diffOut = gitOut(["diff", "--raw", "-M", "-z", range], cwd);
-  if (diffOut === null) fail(`could not compute diff for range '${range}'`, EXIT.protocol);
+  const diffOut = gitOut(["diff", "--raw", "-M", "-z", `${diffBase}..${head}`], cwd);
+  if (diffOut === null) fail(`could not compute diff for ${diffBase}..${head}`, EXIT.protocol);
   const diffEntries = parseRawDiff(diffOut);
-  const policy = loadPolicy(cwd);
+
+  let policy: Policy;
+  if (policySource === "head") {
+    process.stderr.write(
+      "quorum: --policy=head is a NON-ENFORCEMENT diagnostic: it grades against the " +
+        "working-tree policy (which a PR can edit), NOT the merge-base policy the gate " +
+        "enforces. Do not rely on this output for a merge decision.\n",
+    );
+    policy = loadPolicy(cwd);
+  } else {
+    // QRM-3.2 (red-team R1): policy from the CANONICAL fork point, never the
+    // --base-overridable diffBase, so --base cannot select a weaker policy.
+    policy = loadPolicyAtRef(canonicalForkPoint(cwd), cwd);
+  }
   process.stdout.write(`${computeTierFloor(diffEntries, policy)}\n`);
   process.exit(EXIT.pass);
 }

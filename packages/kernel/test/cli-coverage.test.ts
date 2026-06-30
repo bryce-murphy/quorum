@@ -83,6 +83,10 @@ describe.skipIf(!haveBuild)("quorum verify - diff coverage (FIX 1)", () => {
     git(["config", "user.email", "t@t.test"], repo);
     git(["config", "user.name", "Test"], repo);
     writeFileSync(join(repo, "README.md"), "base\n");
+    // QRM-3.2: verify grades against the policy at the merge-base, so commit it
+    // at the base. The feature branch's own policy edits are then non-binding.
+    mkdirSync(join(repo, ".quorum"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY);
     git(["add", "-A"], repo);
     git(["commit", "-m", "base"], repo);
 
@@ -159,7 +163,7 @@ describe.skipIf(!haveBuild)("quorum tier - rename-aware floor (FIX 10)", () => {
   });
 
   it("floors T3 from the renamed-away schemas/** path", () => {
-    const r = runCli(["tier", "--diff", "main..HEAD"], repo);
+    const r = runCli(["tier"], repo); // QRM-3.2: default base=main, base policy
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toBe("T3");
   });
@@ -178,6 +182,10 @@ describe.skipIf(!haveBuild)("quorum verify - carving --base (FIX 11)", () => {
     git(["config", "user.email", "t@t.test"], repo);
     git(["config", "user.name", "Test"], repo);
     writeFileSync(join(repo, "README.md"), "base\n");
+    // QRM-3.2: policy is graded from the merge-base (C0 fork point), so commit it
+    // here at C0, not just on the feature branch.
+    mkdirSync(join(repo, ".quorum"), { recursive: true });
+    writeFileSync(join(repo, ".quorum/policy.json"), POLICY);
     git(["add", "-A"], repo);
     git(["commit", "-m", "C0 fork point"], repo);
 
@@ -205,7 +213,7 @@ describe.skipIf(!haveBuild)("quorum verify - carving --base (FIX 11)", () => {
   });
 
   it("over the true fork point the malicious schema is in-delta and floors T3", () => {
-    const r = runCli(["tier", "--diff", "main..HEAD"], repo);
+    const r = runCli(["tier"], repo); // QRM-3.2: default base=main, base policy
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toBe("T3"); // not T0 - the change cannot be carved away
   });
@@ -236,7 +244,7 @@ describe.skipIf(!haveBuild)("quorum tier - unicode path floor (FIX 12)", () => {
   });
 
   it("floors T3 for a non-ASCII schemas/ path", () => {
-    const r = runCli(["tier", "--diff", "main..HEAD"], repo);
+    const r = runCli(["tier"], repo); // QRM-3.2: default base=main, base policy
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toBe("T3");
   });
