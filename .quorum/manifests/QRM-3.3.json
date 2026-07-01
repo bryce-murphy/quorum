@@ -1,0 +1,17 @@
+{
+  "schema": "quorum.task/v1",
+  "id": "QRM-3.3",
+  "title": "Extend agent-config tier-floor coverage to un-floored harness surfaces",
+  "tier_proposed": "T3",
+  "tier_effective": null,
+  "acceptance": [
+    "agent-config tier floor extends to the ECC/first-party-doc-surfaced harness gaps (.claude-plugin, .codex-plugin, .gemini, .zed, .opencode, .kiro, .trae, .qwen, .codebuddy, .windsurf/rules, .devin/rules, GEMINI.md, .geminiignore, .aiexclude, agent.yaml) and broadens .agents/** beyond the skills subtree",
+    "globs are component-exact: the new rules floor the real config surfaces and do NOT over-match benign look-alikes (.geminix, .claude-plugin-backup, agent.yaml.bak, .windsurfing, .devin-old, .agents-old) - proven by direct globMatches tests and computeTierFloor tests",
+    "the .claude-plugin/.codex-plugin near-miss gap (siblings not matched by **/.claude/**) is closed",
+    "TACTICAL patch only: the strategic fail-closed dotdir inversion (unknown agent-control surfaces default protected, known-benign safelisted) remains a separate tracked task; bare **/.X entries here are defense-in-depth pending the QRM-3.0 bare-rule retirement",
+    "quorum verify --local --task QRM-3.3 on the branch yields a clean verified ledger covering every changed path at T3"
+  ],
+  "branch": "qrm-3.3-harness-config-coverage",
+  "state": "handed_back",
+  "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
+}
