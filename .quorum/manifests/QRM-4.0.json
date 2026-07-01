@@ -11,7 +11,8 @@
     "PREREQUISITE - trusted verifier code: the Gate runs a pinned/base verifier version, NOT arbitrary PR-head code; a PR cannot alter the verifier that grades it (QRM-3.2 secures policy DATA, not verifier CODE)",
     "PREREQUISITE - mode-bearing diff (QRM-3.1): the Gate consumes a mode-carrying diff (local git diff --raw, or an equivalent GitHubForge.compare) so symlink/gitlink floors hold in the enforcement path",
     "PREREQUISITE - GitHubForge parity: GitHubForge.compare returns mode-bearing, rename-faithful DiffEntry[] (currently fails closed by throwing) before any forge-mode tier/coverage decision",
-    "the Gate is not claimed as complete tier-floor enforcement until every PREREQUISITE above is met (principle 2: do not claim enforcement not shipped)"
+    "the Gate is not claimed as complete tier-floor enforcement until every acceptance item prefixed 'PREREQUISITE' in this manifest is met, regardless of their order in the list (principle 2: do not claim enforcement not shipped)",
+    "PREREQUISITE - delegated/transitive agent-config references: a floored config that references arbitrary files (opencode.json instructions:/{file:}, CLAUDE.md @import, Cursor rule refs) must not let a PR edit the referenced file at a tier below the config's floor; closed by QRM-3.4 (dynamic floor of parsed reference targets). A floor delegation can bypass = a leaky Gate."
   ],
   "branch": "qrm-4.0-l2-gate",
   "state": "planned",

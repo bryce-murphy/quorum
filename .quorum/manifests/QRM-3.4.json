@@ -1,0 +1,17 @@
+{
+  "schema": "quorum.task/v1",
+  "id": "QRM-3.4",
+  "title": "Close the transitive/delegated agent-config trust surface",
+  "tier_proposed": "T3",
+  "tier_effective": null,
+  "acceptance": [
+    "a PR that edits ONLY a file referenced by a floored agent-config (e.g. opencode.json instructions:[...] or prompt {file:./path}, CLAUDE.md @import, Cursor rule references) is graded at or above the referencing config's floor, not the default floor",
+    "reference targets are resolved deterministically from committed bytes (parse the floored config at the diff head/base), never trusting a scanner or heuristic",
+    "fail closed: if a floored config's reference directives cannot be parsed or a referenced path cannot be resolved, the affected paths floor to T3 (or the change blocks), never silently pass at a lower tier",
+    "no over-broad flooring: only the actually-referenced paths are added to the floor set, not their whole directories, unless the config references a directory",
+    "this is a QRM-4.0 Gate prerequisite: the Gate is not complete tier-floor enforcement while a floor can be bypassed by delegation"
+  ],
+  "branch": "qrm-3.4-delegated-config-references",
+  "state": "planned",
+  "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
+}
