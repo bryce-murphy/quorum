@@ -43,7 +43,7 @@ Schema change in `@quorum/contracts`: an optional `reference_extractor` on a pol
 - Recurse referenced `CLAUDE.md`/`.md` imports to a maximum of **four hops** (first-party), matching the set the agent actually loads (no over-broad flooring past hop 4; no under-flooring before it), with cycle detection.
 
 **`opencode-json`** (JSON **and** JSONC — `.jsonc` is floored):
-- `instructions: string[]` -> plain paths to `exact`, glob patterns to `globs`. Repo-relative only; absolute/`~`/out-of-repo -> skip.
+- `instructions: string[]` -> repo-relative plain paths to `exact`, glob patterns to `globs`. **Absolute and `~`-home instruction paths FAIL CLOSED (P1, cross-architect review)** — same shape as the claude-md rule: OpenCode allows absolute/`~` config paths, and one that resolves back into the checkout is a PR-editable repo file the resolver would never floor, so a floored `opencode.json/.jsonc` containing an absolute/`~` instruction path (or `{file:}` path, below) is a **hard error -> verify blocks**, not a silent skip. Skip only a path provably outside the repo.
 - `{file:...}` **only in instruction-bearing fields** (`agent.*.prompt`, deprecated `mode.*.prompt`) -> its path to `exact`/`globs`. **Not** arbitrary strings: a provider `apiKey: "{file:~/.secrets/key}"` must not floor.
 - Unparseable config at the trusted ref -> resolver **throws** -> verify fails closed (block), never silently passes. (Editing the config itself is already T3; the fail-closed case is a PR that edits only a referenced file while the config cannot be parsed to discover it.)
 - Git-repo / external-local instruction references deferred.
