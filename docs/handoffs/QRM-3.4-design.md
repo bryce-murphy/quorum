@@ -37,7 +37,8 @@ Schema change in `@quorum/contracts`: an optional `reference_extractor` on a pol
 
 **`claude-md`** — parse `@path` imports from every `**/CLAUDE.md` (and `CLAUDE.local.md`) at the trusted ref.
 - Skip Markdown code spans and fenced code blocks; skip backtick-literal `` `@x` `` (first-party: not imported).
-- **Resolution (pinned, first-party):** strip the `@` sigil; join the token to the containing file's directory; POSIX-normalize (collapses `..`); if the result escapes the repo root (leading `..`) or is filesystem-absolute or `~`-home, it is out-of-repo -> **skip** (no in-repo path a PR to this repo can edit; not a bypass); otherwise pass the collapsed path through the real `normalizePath` for the final NUL/absolute guard and canonical form. This uniform rule is correct for bare, `./`, and `../`.
+- **Resolution (pinned, first-party):** strip the `@` sigil. A **repo-relative** token (bare, `./`, `../`) is joined to the containing file's directory and POSIX-normalized (collapses `..`); if the collapsed result escapes the repo root (leading `..`) it is *provably* outside the repo -> **skip** (no in-repo path a PR to this repo can edit; not a bypass); otherwise pass it through the real `normalizePath` for the final NUL/absolute guard and canonical form. This uniform rule is correct for bare, `./`, and `../`.
+- **Absolute and `~`-home imports FAIL CLOSED (P2-1, cross-architect review).** First-party allows absolute/home imports, but their repo-relative target is *not derivable from committed bytes*: the checkout's absolute root is machine-specific in local mode and absent entirely in forge mode. Unconditionally skipping them is fail-**open** — an absolute path that resolves back inside the checkout (a stable CI checkout path, or a repo under `$HOME`) would load a PR-editable repo file the resolver never floors. So a floored config that contains a filesystem-absolute (`@/...`, `@C:\...`) or `~`-home (`@~/...`) import is a **hard error -> verify blocks**, never a silent skip. Remediation is to use a repo-relative import (the portable, gradeable form). Optional local-mode refinement (not required for v1): resolve `~`/absolute against the real `git rev-parse --show-toplevel` and floor the repo-relative remainder when provably inside, still blocking when unprovable — but the uniform block is the conservative baseline and the only coherent forge-mode behavior.
 - Do **not** pass the raw token through `normalizePath` first: `normalizePath` hard-rejects any `..` segment, which would drop legitimate in-repo parent references (`@../sibling/x.md` -> `packages/sibling/x.md`) = bypass. Collapse-then-bounds-check, then normalize.
 - Recurse referenced `CLAUDE.md`/`.md` imports to a maximum of **four hops** (first-party), matching the set the agent actually loads (no over-broad flooring past hop 4; no under-flooring before it), with cycle detection.
 
@@ -59,7 +60,7 @@ A referenced path must require coverage even if it matches `exempt_paths` (QRM-3
 
 - **Cursor rule references.** `.cursor/**`, `.cursorrules`, `.cursorignore` are already floored directly (the config/rules files themselves are covered). The open residual is a `.cursor/rules/*.mdc` rule that *references* a non-`.cursor` in-repo file. Deferred until the Cursor `.mdc` reference grammar is first-party-sourced — the QRM-3.4 lesson (the Claude `@import` rule was mis-specified in the handoff) applies: do not implement from memory. Track as a follow-up.
 - **`.claude/rules/` symlink targets.** `.claude/rules/*.md` may be symlinks to in-repo files outside `.claude/` (first-party supports this). The symlink itself is already T3 by QRM-3.1 mode floor; editing the symlink's in-repo *target* is the same delegated class as `@import`. Narrow residual; track as a follow-up rather than fold into 3.4.
-- **`@/`-leading-slash import semantics.** First-party shows `@~/...` (home) and relative forms but does not document a `@/abs` "absolute from project root" form (third-party sources conflict). v1 treats `@/...` as filesystem-absolute -> out-of-repo skip. Confirm against first-party before relying on it; note if it turns out to mean repo-root.
+- **`@/`-leading-slash import semantics.** First-party shows `@~/...` (home) and relative forms but does not document a `@/abs` "absolute from project root" form (third-party sources conflict). v1 fails closed on `@/...` (blocks; see the claude-md resolution rule). If first-party confirms `@/` means repo-root, add a repo-root-relative resolution path in a follow-up rather than blocking.
 
 ## Prototype status
 
@@ -72,9 +73,9 @@ The **prior** prototype validated the wrong import rule; its "all axes pass" is 
 | `docs/a.md` | `@./b.md` | `docs/b.md` | dot-slash in nested file |
 | `docs/a.md` | `@docs/b.md` | `docs/docs/b.md` | literal `docs/` — correct first-party behavior |
 | `packages/a/CLAUDE.md` | `@../b/x.md` | `packages/b/x.md` | in-repo parent ref (blanket `..` reject would DROP = bypass) |
-| `CLAUDE.md` | `@~/.claude/x.md` | (skip) | home -> out of repo |
-| `CLAUDE.md` | `@../../etc/passwd` | (skip) | escapes repo root |
-| `CLAUDE.md` | `@/abs/x.md` | (skip) | fs-absolute |
+| `CLAUDE.md` | `@../../etc/passwd` | (skip) | escapes repo root via `..` — provably outside |
+| `CLAUDE.md` | `@~/.claude/x.md` | (BLOCK) | home — not derivable from bytes, fail closed (P2-1) |
+| `CLAUDE.md` | `@/abs/x.md` | (BLOCK) | fs-absolute — not derivable from bytes, fail closed (P2-1) |
 
 Still required before Builder (loop gates unchanged): a full extractor+resolver prototype against the real `globMatches`/`normalizePath` (claude-md recursion + cycle detection, opencode instructions/globs/`{file:}` scoping, coverage override), then GPT cross-architect review of this corrected design.
 
