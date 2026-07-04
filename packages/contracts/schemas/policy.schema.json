@@ -39,6 +39,13 @@
               "glob": {
                 "minLength": 1,
                 "type": "string"
+              },
+              "reference_extractor": {
+                "enum": [
+                  "claude-md",
+                  "opencode-json"
+                ],
+                "type": "string"
               }
             },
             "required": [

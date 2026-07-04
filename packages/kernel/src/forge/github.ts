@@ -4,6 +4,7 @@ import { mergeReviewEndpoints } from "./review-merge.js";
 import {
   absent,
   ok,
+  unsupported,
   type CheckRun,
   type CommitInfo,
   type CompareResult,
@@ -65,6 +66,16 @@ export class GitHubForge implements ForgeAdapter {
       if (isNotFound(err)) return absent();
       throw err;
     }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
+  async listFiles(_ref: string): Promise<ForgeResponse<readonly string[]>> {
+    // QRM-3.4 / QRM-4.0: authenticated-forge tree listing is DEFERRED (a recorded
+    // QRM-4.0 prerequisite). Reference resolution in forge mode needs it; until it
+    // lands, report `unsupported` (consistent with mode-bearing `compare`) so the
+    // resolver fails closed rather than silently resolving zero references. The
+    // CLI is --local only, so nothing currently routes reference resolution here.
+    return unsupported();
   }
 
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {

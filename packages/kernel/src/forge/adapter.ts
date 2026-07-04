@@ -70,6 +70,12 @@ export interface CompareResult {
  */
 export interface ForgeAdapter {
   getFile(ref: string, path: string): Promise<ForgeResponse<FileContent>>;
+  /** List every tracked file path at `ref` (QRM-3.4). Needed to enumerate all
+   *  `**` + `/CLAUDE.md` / `opencode.*` configs for delegated-reference
+   *  resolution - `getFile` alone cannot discover them. Local: `git ls-tree -r`.
+   *  Authenticated-forge tree listing is a QRM-4.0 prerequisite; the GitHub
+   *  backend reports `unsupported` (consistent with mode-bearing `compare`). */
+  listFiles(ref: string): Promise<ForgeResponse<readonly string[]>>;
   resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>>;
   getPR(n: number): Promise<ForgeResponse<PrInfo>>;
   getIssue(n: number): Promise<ForgeResponse<IssueInfo>>;
