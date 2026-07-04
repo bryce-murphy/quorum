@@ -45,6 +45,7 @@ Schema change in `@quorum/contracts`: an optional `reference_extractor` on a pol
 **`opencode-json`** (JSON **and** JSONC — `.jsonc` is floored):
 - `instructions: string[]` -> repo-relative plain paths to `exact`, glob patterns to `globs`. **Absolute and `~`-home instruction paths FAIL CLOSED (P1, cross-architect review)** — same shape as the claude-md rule: OpenCode allows absolute/`~` config paths, and one that resolves back into the checkout is a PR-editable repo file the resolver would never floor, so a floored `opencode.json/.jsonc` containing an absolute/`~` instruction path (or `{file:}` path, below) is a **hard error -> verify blocks**, not a silent skip. Skip only a path provably outside the repo.
 - `{file:...}` **only in instruction-bearing fields** (`agent.*.prompt`, deprecated `mode.*.prompt`) -> its path to `exact`/`globs`. **Not** arbitrary strings: a provider `apiKey: "{file:~/.secrets/key}"` must not floor.
+- **JSONC must be parsed with a STRING-AWARE lexer (prototype finding, load-bearing).** Comment/trailing-comma stripping via regex is a bypass: the substring `/**/` inside a legitimate string literal such as `"guides/**/*.guide.md"` regex-matches a block comment and is deleted, silently narrowing the glob to `guides*.guide.md` and under-flooring exactly the recursive-glob instruction patterns this extractor exists to catch. Strip comments and trailing commas ONLY outside string literals (a proper lexer that copies quoted strings verbatim, honoring escapes). The full re-prototype caught this against a real recursive-glob fixture.
 - Unparseable config at the trusted ref -> resolver **throws** -> verify fails closed (block), never silently passes. (Editing the config itself is already T3; the fail-closed case is a PR that edits only a referenced file while the config cannot be parsed to discover it.)
 - Git-repo / external-local instruction references deferred.
 
@@ -77,7 +78,9 @@ The **prior** prototype validated the wrong import rule; its "all axes pass" is 
 | `CLAUDE.md` | `@~/.claude/x.md` | (BLOCK) | home — not derivable from bytes, fail closed (P2-1) |
 | `CLAUDE.md` | `@/abs/x.md` | (BLOCK) | fs-absolute — not derivable from bytes, fail closed (P2-1) |
 
-Still required before Builder (loop gates unchanged): a full extractor+resolver prototype against the real `globMatches`/`normalizePath` (claude-md recursion + cycle detection, opencode instructions/globs/`{file:}` scoping, coverage override), then GPT cross-architect review of this corrected design.
+Still required before Builder (loop gates unchanged): GPT cross-architect review of this corrected design.
+
+**Full re-prototype DONE (25/25) against the real kernel `dist` at `main` `04c00da`** — `computeTierFloor`, `globMatches`, `normalizePath`, `changedPaths`, `computeUncoveredPaths`, and contracts `maxTier`/`tierRank`, over a purpose-built git fixture (4-hop import chain, cycle, code-fence/inline skips, second nested config, opencode JSONC with recursive glob + agent-prompt `{file:}` + provider `apiKey`, three poisoned branches). All axes pass: full 4-hop chain floors T3 and hop 5 stays T0; cycle terminates; fenced/inline imports skipped; opencode exact + recursive glob + `{file:}` floor T3 while `apiKey {file:~}` is neither floored nor blocked; all three absolute/`~` poisons BLOCK; case-fold exact, mode floor, plain rules, and 2-arg backward-compat intact; coverage override reinstates an `exempt_paths`-exempted referenced path. **New finding folded into the opencode spec above: JSONC must be parsed with a string-aware lexer** — regex comment-stripping corrupts `"guides/**/*.guide.md"` into `guides*.guide.md` (under-flooring bypass), caught only because the fixture used a real recursive-glob instruction.
 
 ## Builder routing
 
