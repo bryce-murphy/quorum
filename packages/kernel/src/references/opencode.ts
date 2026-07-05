@@ -20,7 +20,8 @@ import {
  *    nested `packages/a/opencode.jsonc` with `"prompts/x.md"` floors
  *    `packages/a/prompts/x.md`. Remote-URL entries (http/https) are skipped.
  *  - `{file:...}` substitutions in INSTRUCTION-BEARING fields only
- *    (`agent.*.prompt`, deprecated `mode.*.prompt`) -> its path, also
+ *    (`agent.*.prompt`, deprecated `mode.*.prompt`, and `command.*.template` -
+ *    a command template is the prompt sent to the LLM) -> its path, also
  *    config-dir-relative. A `{file:}` anywhere else (e.g. a provider `apiKey`)
  *    must NOT floor.
  *  - Absolute / `~`-home instruction or `{file:}` paths BLOCK (fail closed).
@@ -82,17 +83,29 @@ export function extractOpencodeReferences(configPath: string, content: string): 
       });
     }
 
-    // Instruction-bearing prompt fields only. `agent.*.prompt` (current) and
-    // `mode.*.prompt` (deprecated) may carry `{file:path}` substitutions.
-    for (const field of ["agent", "mode"] as const) {
+    // Instruction-bearing prompt fields carrying `{file:path}` substitutions.
+    // The prompt field name differs per container: `agent.*.prompt` (current),
+    // `mode.*.prompt` (deprecated), and `command.*.template` (a command's
+    // template IS the prompt sent to the LLM - opencode.ai/docs/commands - so a
+    // `{file:}` in it loads that file into agent context: cross-family red-team
+    // Repro 1). NOTE (scoped out -> QRM-3.5): the command-prompt `@file` include
+    // (opencode.ai/docs/commands#file-references), which is repo-ROOT-relative and
+    // spans both command templates and `.opencode/commands/**/*.md`, is a distinct
+    // mechanism/base and is NOT handled here.
+    const PROMPT_FIELDS = [
+      ["agent", "prompt"],
+      ["mode", "prompt"],
+      ["command", "template"],
+    ] as const;
+    for (const [field, promptKey] of PROMPT_FIELDS) {
       const container = obj[field];
       if (container === null || typeof container !== "object") continue;
       for (const [name, cfg] of Object.entries(container as Record<string, unknown>)) {
         if (cfg === null || typeof cfg !== "object") continue;
-        const prompt = (cfg as Record<string, unknown>)["prompt"];
+        const prompt = (cfg as Record<string, unknown>)[promptKey];
         if (typeof prompt !== "string") continue;
         for (const filePath of extractFileRefs(prompt)) {
-          add(filePath, `/${field}/${name}/prompt`);
+          add(filePath, `/${field}/${name}/${promptKey}`);
         }
       }
     }

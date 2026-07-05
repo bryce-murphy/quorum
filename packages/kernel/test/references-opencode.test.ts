@@ -40,6 +40,22 @@ describe("QRM-3.4 opencode-json extractor", () => {
     expect(exact).toEqual(["prompts/build.md"]);
   });
 
+  it("floors a command.*.template {file:} path (Repro 1 - command template is the LLM prompt)", () => {
+    const { exact } = extractOpencodeReferences(
+      "opencode.json",
+      j({ command: { audit: { template: "Audit with: {file:docs/steer.md}" } } }),
+    );
+    expect(exact).toEqual(["docs/steer.md"]);
+  });
+
+  it("resolves a command.*.template {file:} config-dir-relative in a nested config", () => {
+    const { exact } = extractOpencodeReferences(
+      "packages/a/opencode.jsonc",
+      j({ command: { audit: { template: "{file:docs/steer.md}" } } }),
+    );
+    expect(exact).toEqual(["packages/a/docs/steer.md"]);
+  });
+
   it("does NOT floor and does NOT block a {file:} outside instruction fields (provider apiKey)", () => {
     // apiKey carries a {file:~/...} - a home path that WOULD block if scanned. It
     // must be neither floored nor blocked (it is not instruction-bearing).
