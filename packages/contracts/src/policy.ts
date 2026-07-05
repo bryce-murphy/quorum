@@ -8,6 +8,14 @@ export const PolicyRuleSchema = z
   .object({
     glob: z.string().min(1),
     floor: TierSchema,
+    // QRM-3.4: an optional extractor that resolves DELEGATED references from a
+    // floored agent-config to in-repo files (so editing only a referenced file
+    // grades at the config's floor, not the default). A STRICT enum: an unknown
+    // value schema-fails (fail closed). The policy stays the auditable trust
+    // surface. Absent => the rule floors its own paths only (no reference
+    // resolution). v1 extractors: `claude-md` (@import), `opencode-json`
+    // (instructions[] + instruction-field {file:}).
+    reference_extractor: z.enum(["claude-md", "opencode-json"]).optional(),
   })
   .strict();
 

@@ -1,6 +1,11 @@
 import type { Claim, ClaimResult, ClaimType, Tier } from "@quorum/contracts";
 import { tierRank } from "@quorum/contracts";
 import { globMatches, normalizeGlobSeparators, normalizePath } from "./tier/glob.js";
+import {
+  EMPTY_REFERENCED_FLOORS,
+  isReferencedPath,
+  type ReferencedFloors,
+} from "./tier/references.js";
 
 /** Claim types whose verification depends on the forge (not local git). When the
  *  forge cannot answer them, the honest verifier returns unverifiable_disclosed -
@@ -57,6 +62,13 @@ export function applyStrictFailClosed(
  * checked `verified` claim covers; `verified_exists` (existence only) does NOT,
  * because at high blast radius "a file by this name exists" is not enough - the
  * content must be pinned. At T0/T1, existence is proportionate and covers.
+ *
+ * QRM-3.4 (sibling-hole override) - a path REFERENCED by a floored agent-config
+ * must require coverage even if it matches an `exempt_paths` glob: a floored
+ * config must not be able to launder a referenced file into an exemption. The
+ * referenced check uses the SAME shared matcher as the tier floor
+ * (`isReferencedPath`) so the two enforcement points cannot drift. Omit
+ * `referencedFloors` and behavior is identical to pre-QRM-3.4.
  */
 export function computeUncoveredPaths(
   claims: readonly Claim[],
@@ -64,6 +76,7 @@ export function computeUncoveredPaths(
   changedPaths: readonly string[],
   exemptGlobs: readonly string[] = [],
   tier: Tier = "T0",
+  referencedFloors: ReferencedFloors = EMPTY_REFERENCED_FLOORS,
 ): string[] {
   const requireContent = tierRank(tier) >= tierRank("T2");
   const statusById = new Map(results.map((r) => [r.claim_id, r.status]));
@@ -82,7 +95,11 @@ export function computeUncoveredPaths(
   for (const raw of changedPaths) {
     const path = normalizePath(raw);
     if (covered.has(path)) continue;
-    if (exempt.some((g) => globMatches(g, path))) continue;
+    // A referenced path is NEVER exemptable; only a non-referenced path may be
+    // dropped by an exempt glob.
+    if (!isReferencedPath(path, referencedFloors) && exempt.some((g) => globMatches(g, path))) {
+      continue;
+    }
     uncovered.push(path);
   }
   return uncovered;

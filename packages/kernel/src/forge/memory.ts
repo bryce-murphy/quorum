@@ -56,6 +56,13 @@ export class MemoryForge implements ForgeAdapter {
     return ok({ content, sha256: sha256(content) });
   }
 
+  async listFiles(ref: string): Promise<ForgeResponse<readonly string[]>> {
+    if (this.blocked("listFiles")) return unsupported();
+    const atRef = this.data.files?.[ref];
+    if (atRef === undefined) return absent();
+    return ok(Object.keys(atRef));
+  }
+
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {
     if (this.blocked("resolveCommit")) return unsupported();
     return this.data.commits?.includes(sha) ? ok({ sha }) : absent();

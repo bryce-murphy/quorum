@@ -14,9 +14,11 @@ import { verifyClaims } from "./run.js";
 import { buildLedger } from "./ledger/build.js";
 import { renderLedger } from "./ledger/render.js";
 import { computeTierFloor } from "./tier/floor.js";
+import type { ReferencedFloors } from "./tier/references.js";
+import { resolveReferencedFloors } from "./references/resolve.js";
 import { validateArtifact } from "./validate.js";
 import { LocalGitForge } from "./forge/local-git.js";
-import { changedPaths, parseRawDiff } from "./diff.js";
+import { changedPaths, parseRawDiff, type DiffEntry } from "./diff.js";
 import { applyStrictFailClosed, computeUncoveredPaths } from "./gate.js";
 
 /** Exit codes (SPEC 4): 0 pass - 1 claim failure - 2 protocol/parse failure. */
@@ -182,6 +184,45 @@ function loadPolicyAtRef(ref: string, cwd: string): Policy {
   return parsed.data;
 }
 
+/**
+ * QRM-3.4 - the SINGLE enforcement path shared by `verify` and `tier` (P3).
+ *
+ * Resolves the grading policy AND its delegated references (`reference_extractor`
+ * rules -> in-repo files a floored config loads by content) at ONE trusted ref,
+ * then computes the tier floor over the diff via the 3-arg `computeTierFloor`.
+ * Both commands go through here, so `tier` can never drift back onto the 2-arg
+ * pure floor while `verify` gains reference resolution (or vice versa).
+ *
+ * Enforcement (default): policy + references from the CANONICAL fork point
+ * (pinned to `main`, NOT the --base-overridable diff base - red-team R1). The
+ * `--policy=head` diagnostic reads the working-tree policy AND resolves its
+ * references from the HEAD commit - explicitly non-enforcement, announced by the
+ * caller's stderr warning. Reference resolution is tree-reading, hence async.
+ *
+ * Fail-closed: `resolveReferencedFloors` throws a `ReferenceResolutionError` on
+ * an absolute/`~`/unparseable/unreadable reference; the top-level handler surfaces
+ * the diagnostic and exits with the protocol (block) code - never a silent pass.
+ */
+async function resolveEnforcement(
+  cwd: string,
+  diffEntries: readonly DiffEntry[],
+  headDiagnostic: boolean,
+): Promise<{ policy: Policy; referencedFloors: ReferencedFloors; floor: Tier }> {
+  let policy: Policy;
+  let referenceRef: string;
+  if (headDiagnostic) {
+    policy = loadPolicy(cwd);
+    referenceRef = "HEAD";
+  } else {
+    referenceRef = canonicalForkPoint(cwd);
+    policy = loadPolicyAtRef(referenceRef, cwd);
+  }
+  const repoReader = new LocalGitForge({ cwd });
+  const referencedFloors = await resolveReferencedFloors(policy, repoReader, referenceRef);
+  const floor = computeTierFloor(diffEntries, policy, referencedFloors);
+  return { policy, referencedFloors, floor };
+}
+
 // -- quorum verify -------------------------------------------------------------
 async function cmdVerify(args: string[]): Promise<void> {
   const { flags, bools } = parseFlags(args);
@@ -255,18 +296,22 @@ async function cmdVerify(args: string[]): Promise<void> {
   const diffEntries = parseRawDiff(diffRaw);
   const diffPaths = changedPaths(diffEntries);
   // QRM-3.2: grade against the BASE policy, not the PR head. This SAME object
-  // feeds BOTH the tier floor (below) AND coverage (policy.exempt_paths, further
-  // down) - a PR cannot self-lower its floor or self-exempt by editing its own
-  // working-tree .quorum/policy.json. Loaded AFTER the empty-self-delta decline
-  // so a run on `main` still declines before any policy read.
+  // feeds BOTH the tier floor AND coverage (policy.exempt_paths, further down) -
+  // a PR cannot self-lower its floor or self-exempt by editing its own working-
+  // tree .quorum/policy.json. Loaded AFTER the empty-self-delta decline so a run
+  // on `main` still declines before any policy read.
   //
   // QRM-3.2 (red-team R1): the policy ref is the CANONICAL fork point, NOT the
   // --base-overridable diffBase - otherwise `--base <older>` could select an
   // older, weaker policy. The diff still spans diffBase..HEAD (so --base's
   // legitimate diff-widening is preserved); only the POLICY ref is pinned.
-  const policyRef = canonicalForkPoint(cwd);
-  const policy = loadPolicyAtRef(policyRef, cwd);
-  const tierEffective = maxTier(tierProposed, computeTierFloor(diffEntries, policy));
+  //
+  // QRM-3.4: resolveEnforcement ALSO resolves this policy's delegated references
+  // (a floored config's @imports / opencode instructions -> in-repo files) at the
+  // SAME canonical ref and folds them into the floor. `referencedFloors` is reused
+  // for the coverage sibling-hole override below.
+  const { policy, referencedFloors, floor } = await resolveEnforcement(cwd, diffEntries, false);
+  const tierEffective = maxTier(tierProposed, floor);
 
   const forge = new LocalGitForge({ cwd, head, mergeBase: diffBase });
   const rawResults = await verifyClaims(extracted.claims, forge, { head, mergeBase: diffBase, branch });
@@ -280,6 +325,7 @@ async function cmdVerify(args: string[]): Promise<void> {
     diffPaths,
     policy.exempt_paths ?? [],
     tierEffective,
+    referencedFloors,
   );
 
   const ledger = buildLedger(results, {
@@ -310,7 +356,12 @@ async function cmdVerify(args: string[]): Promise<void> {
 // remove. Head-policy inspection survives ONLY as `--policy=head`: an explicit,
 // labeled, NON-DEFAULT diagnostic that reads the working-tree policy and warns on
 // stderr that it does not reflect enforcement.
-function cmdTier(args: string[]): void {
+//
+// QRM-3.4: tier resolves DELEGATED references by default too (via the shared
+// resolveEnforcement path), so `tier` reports the same floor the gate enforces -
+// including reference floors - and cannot drift onto the reference-blind 2-arg
+// pure floor. It is async because reference resolution reads the git tree.
+async function cmdTier(args: string[]): Promise<void> {
   const { flags, bools } = parseFlags(args);
   const cwd = process.cwd();
   const head = "HEAD";
@@ -341,20 +392,22 @@ function cmdTier(args: string[]): void {
   if (diffOut === null) fail(`could not compute diff for ${diffBase}..${head}`, EXIT.protocol);
   const diffEntries = parseRawDiff(diffOut);
 
-  let policy: Policy;
   if (policySource === "head") {
+    // QRM-3.4: the reference SOURCE is equally explicit - references are resolved
+    // from the HEAD commit here, not the merge-base, so this is non-enforcement on
+    // BOTH the policy and its delegated references.
     process.stderr.write(
       "quorum: --policy=head is a NON-ENFORCEMENT diagnostic: it grades against the " +
-        "working-tree policy (which a PR can edit), NOT the merge-base policy the gate " +
-        "enforces. Do not rely on this output for a merge decision.\n",
+        "working-tree policy AND resolves its delegated references from HEAD (both of " +
+        "which a PR can edit), NOT the merge-base policy/references the gate enforces. " +
+        "Do not rely on this output for a merge decision.\n",
     );
-    policy = loadPolicy(cwd);
-  } else {
-    // QRM-3.2 (red-team R1): policy from the CANONICAL fork point, never the
-    // --base-overridable diffBase, so --base cannot select a weaker policy.
-    policy = loadPolicyAtRef(canonicalForkPoint(cwd), cwd);
   }
-  process.stdout.write(`${computeTierFloor(diffEntries, policy)}\n`);
+  // QRM-3.2 (red-team R1) + QRM-3.4: policy AND references from the CANONICAL fork
+  // point by default (never the --base-overridable diffBase), via the SAME shared
+  // enforcement path verify uses. --policy=head flips both to the HEAD reading.
+  const { floor } = await resolveEnforcement(cwd, diffEntries, policySource === "head");
+  process.stdout.write(`${floor}\n`);
   process.exit(EXIT.pass);
 }
 

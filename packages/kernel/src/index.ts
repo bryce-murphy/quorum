@@ -12,6 +12,17 @@ export { applyStrictFailClosed, computeUncoveredPaths } from "./gate.js";
 export { renderLedger, renderHeadline } from "./ledger/render.js";
 
 export { computeTierFloor } from "./tier/floor.js";
+export {
+  referencedFloor,
+  isReferencedPath,
+  EMPTY_REFERENCED_FLOORS,
+} from "./tier/references.js";
+export type { ReferencedFloors } from "./tier/references.js";
+export { resolveReferencedFloors, ReferenceResolutionError } from "./references/resolve.js";
+export type { ReferenceDiagnostic } from "./references/resolve.js";
+export { extractClaudeMdReferences, parseClaudeImports } from "./references/claude-md.js";
+export { extractOpencodeReferences } from "./references/opencode.js";
+export { stripJsonc } from "./references/jsonc.js";
 export { parseRawDiff, changedPaths, DiffParseError } from "./diff.js";
 export type { DiffEntry } from "./diff.js";
 export {

@@ -2,6 +2,7 @@ import type { Policy, Tier } from "@quorum/contracts";
 import { maxTier } from "@quorum/contracts";
 import { changedPaths, type DiffEntry } from "../diff.js";
 import { globMatches, normalizeGlobSeparators, normalizePath } from "./glob.js";
+import { referencedFloor, type ReferencedFloors } from "./references.js";
 
 /** Git object modes that are an indirection rather than ordinary file content:
  *  a symlink points elsewhere, a gitlink (submodule) embeds another repo. Either
@@ -25,10 +26,23 @@ const MODE_GITLINK = "160000";
  *     path globs structurally cannot catch (QRM-3.0 red-team R2/R3): the dangerous
  *     property is the object's mode, not where it sits in the tree.
  *
+ *  3. REFERENCED FLOORS (QRM-3.4, optional `referencedFloors`) - a floored
+ *     agent-config can steer the agent by REFERENCING an in-repo file by content;
+ *     a PR editing only that file touches a path no static glob floors. When the
+ *     resolved reference set is supplied, each changed path that is referenced
+ *     (exact case-fold OR glob, via the shared `referencedFloor` matcher)
+ *     contributes the referencing config's floor. Resolution reads config
+ *     CONTENTS, so it happens OUTSIDE this pure function and is passed in; omit
+ *     the argument and behavior is byte-identical to pre-QRM-3.4.
+ *
  * The Gate then takes max(proposed, floor) so a too-low proposed tier cannot
  * lower a risky change.
  */
-export function computeTierFloor(entries: readonly DiffEntry[], policy: Policy): Tier {
+export function computeTierFloor(
+  entries: readonly DiffEntry[],
+  policy: Policy,
+  referencedFloors?: ReferencedFloors,
+): Tier {
   const rules = policy.rules.map((r) => ({ glob: normalizeGlobSeparators(r.glob), floor: r.floor }));
   let floor: Tier = policy.default_floor;
   for (const raw of changedPaths(entries)) {
@@ -37,6 +51,10 @@ export function computeTierFloor(entries: readonly DiffEntry[], policy: Policy):
       if (globMatches(rule.glob, path)) {
         floor = maxTier(floor, rule.floor);
       }
+    }
+    if (referencedFloors !== undefined) {
+      const refFloor = referencedFloor(path, referencedFloors);
+      if (refFloor !== undefined) floor = maxTier(floor, refFloor);
     }
   }
   for (const e of entries) {

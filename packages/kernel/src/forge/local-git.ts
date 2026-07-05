@@ -96,6 +96,18 @@ export class LocalGitForge implements ForgeAdapter {
     return mode !== undefined && /^\d{6}$/.test(mode) ? mode : null;
   }
 
+  async listFiles(ref: string): Promise<ForgeResponse<readonly string[]>> {
+    // QRM-3.4: enumerate tracked files at `ref` for delegated-reference discovery.
+    // `-r` recurses into subtrees (so nested **/CLAUDE.md are listed); `-z` emits
+    // raw NUL-delimited names so paths with spaces/non-ASCII are not C-quoted
+    // (a quoted path would mis-match the extractor glob and under-floor). A null
+    // result (bad ref / not a repo) is `unsupported` -> the resolver fails closed.
+    const out = this.git(["ls-tree", "-r", "--name-only", "-z", ref]);
+    if (out === null) return unsupported();
+    const paths = out.split(String.fromCharCode(0)).filter((p) => p !== "");
+    return ok(paths);
+  }
+
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {
     const exists = this.git(["cat-file", "-e", `${sha}^{commit}`]) !== null;
     if (!exists) return absent();
