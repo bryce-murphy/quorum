@@ -20,6 +20,6 @@
     "this is a QRM-4.0 Gate prerequisite: the Gate is not complete tier-floor enforcement while a floor can be bypassed by delegation. It also surfaces a NEW QRM-4.0 prerequisite -- authenticated-forge tree listing (listFiles at the trusted ref) so references resolve in forge mode -- now RECORDED in .quorum/manifests/QRM-4.0.json (P2-3), not left implicit"
   ],
   "branch": "qrm-3.4-delegated-config-references",
-  "state": "planned",
+  "state": "merged",
   "agents": { "builder": "claude-opus-4-8", "reviewer": "gpt-codex" }
 }
