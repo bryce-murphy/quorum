@@ -18,3 +18,5 @@ export { LocalGitForge } from "./local-git.js";
 export type { LocalGitOptions } from "./local-git.js";
 export { GitHubForge } from "./github.js";
 export type { GitHubForgeOptions } from "./github.js";
+export { parseTreeLeaves, diffTrees, TreeParseError } from "./tree-diff.js";
+export type { TreeLeaf, RawTreeResponse, RawTreeEntry } from "./tree-diff.js";

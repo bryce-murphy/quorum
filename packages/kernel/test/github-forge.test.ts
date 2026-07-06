@@ -81,47 +81,185 @@ describe("GitHubForge.getReviewsAllEndpoints", () => {
   });
 });
 
-describe("GitHubForge.compare - fail closed (QRM-3.1 P2)", () => {
-  it("throws rather than returning mode-less / rename-lossy entries", async () => {
-    // Mode-bearing GitHub compare is deferred; until it lands, compare() must NOT
-    // hand back partial entries that would silently under-floor a tier decision.
-    await expect(forgeWith({}).compare("BASE", "HEAD")).rejects.toThrow(
-      /mode-bearing compare not implemented for GitHubForge/,
-    );
+// QRM-4.0: mode-bearing compare + authenticated listFiles, tree-diff-primary.
+// The COMPREHENSIVE parity + malformed-tree fail-closed matrix lives in the
+// conformance suite (forge-parity.test.ts, driven by a git-backed trees API).
+// These unit tests cover the Octokit WIRING GitHubForge adds on top: commit->tree
+// resolution, the 404->absent envelope, and the status-vocab fail-closed check.
+type TreeEntry = { path: string; mode: string; type: string; sha: string };
+interface TreeOctokitData {
+  /** ref -> tree sha (getCommit resolves the ref's commit + tree). */
+  commits?: Record<string, string>;
+  /** tree sha -> recursive tree response. */
+  trees?: Record<string, { truncated?: boolean; tree?: TreeEntry[] }>;
+  status?: string;
+}
+function notFound(): never {
+  throw Object.assign(new Error("Not Found"), { status: 404 });
+}
+function treeOctokit(data: TreeOctokitData): Octokit {
+  return {
+    repos: {
+      getCommit: async ({ ref }: { ref: string }) => {
+        const treeSha = data.commits?.[ref];
+        if (treeSha === undefined) notFound();
+        return { data: { sha: ref, commit: { tree: { sha: treeSha } } } };
+      },
+      compareCommitsWithBasehead: async () => {
+        if (data.status === undefined) notFound();
+        // `commits: []` keeps resolveCommit's delta-membership check well-formed
+        // (empty delta -> the claimed sha is not "pushed" -> absent); compareStatus
+        // reads only `.status`.
+        return { data: { status: data.status, commits: [] } };
+      },
+    },
+    git: {
+      getTree: async ({ tree_sha }: { tree_sha: string }) => {
+        const t = data.trees?.[tree_sha];
+        if (t === undefined) notFound();
+        return { data: { sha: tree_sha, truncated: t.truncated ?? false, tree: t.tree ?? [] } };
+      },
+    },
+  } as unknown as Octokit;
+}
+const treeForge = (data: TreeOctokitData): GitHubForge =>
+  new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: treeOctokit(data) });
+
+describe("GitHubForge.compare - tree-diff-primary (QRM-4.0)", () => {
+  it("derives mode-bearing DiffEntry[] from base+head trees, status from the compare call", async () => {
+    const res = await treeForge({
+      commits: { BASE: "tb", HEAD: "th" },
+      trees: {
+        tb: { tree: [{ path: "a.ts", mode: "100644", type: "blob", sha: "s1" }] },
+        th: {
+          tree: [
+            { path: "a.ts", mode: "100644", type: "blob", sha: "s2" }, // modified (sha bump)
+            { path: "link", mode: "120000", type: "blob", sha: "sl" }, // symlink ADDED (floors T3)
+            { path: "sub", mode: "160000", type: "commit", sha: "sc" }, // gitlink ADDED (floors T3)
+          ],
+        },
+      },
+      status: "ahead",
+    }).compare("BASE", "HEAD");
+    expect(res.kind).toBe("ok");
+    if (res.kind !== "ok") return;
+    expect(res.value.status).toBe("ahead");
+    const byPath = new Map(res.value.changedPaths.map((e) => [e.path, e]));
+    expect(byPath.get("a.ts")).toMatchObject({ oldMode: "100644", newMode: "100644" });
+    expect(byPath.get("link")?.newMode).toBe("120000"); // mode preserved -> floor holds
+    expect(byPath.get("sub")?.newMode).toBe("160000");
+    expect(res.value.changedPaths).toHaveLength(3);
   });
 
-  it("compare() throw is caught by findContentMatch: commit_pushed resolves failed, not unhandled exception", async () => {
-    // Sub-shape B: a commit_pushed with expected.sha256 triggers findContentMatch,
-    // which calls forge.compare(). When compare() throws (GitHubForge P2), the
-    // throw must be swallowed (null = no match), and the claim resolves to a
-    // normal `failed` verdict - not an unhandled exception that crashes verify.
-    const forge = new GitHubForge({
-      token: "x",
-      owner: "o",
-      repo: "r",
-      head: "HEAD",
-      octokit: {
-        // resolveCommit: getCommit resolves (commit exists) but mergeBase not
-        // set, so the fallback compare-for-status path is reached. Make getCommit
-        // succeed by not throwing, then have compareCommitsWithBasehead throw.
-        repos: {
-          getCommit: async () => ({ data: { sha: "deadbeefdeadbeef" } }),
-          compareCommitsWithBasehead: async () => { throw Object.assign(new Error("not found"), { status: 404 }); },
+  it("returns absent when the base (or head) commit does not resolve (404)", async () => {
+    const res = await treeForge({
+      commits: { HEAD: "th" }, // BASE missing -> getCommit 404
+      trees: { th: { tree: [] } },
+      status: "ahead",
+    }).compare("BASE", "HEAD");
+    expect(res.kind).toBe("absent"); // §4.6: unresolvable base/head -> absent, never a partial diff
+  });
+
+  it("throws (fail closed) on a truncated tree - the sole overflow signal", async () => {
+    await expect(
+      treeForge({
+        commits: { BASE: "tb", HEAD: "th" },
+        trees: { tb: { tree: [] }, th: { truncated: true, tree: [] } },
+        status: "ahead",
+      }).compare("BASE", "HEAD"),
+    ).rejects.toThrow(/truncated/);
+  });
+
+  it("throws (fail closed) on an unknown compare status - malformed first-party vocab", async () => {
+    await expect(
+      treeForge({
+        commits: { BASE: "tb", HEAD: "th" },
+        trees: { tb: { tree: [] }, th: { tree: [] } },
+        status: "sideways", // not ahead|behind|identical|diverged
+      }).compare("BASE", "HEAD"),
+    ).rejects.toThrow(/unknown status/);
+  });
+
+  it("binds the triple to RESOLVED commit SHAs: compareStatus gets the resolved SHAs, not the raw refs", async () => {
+    // A mutable ref resolves to a FIXED commit. The status call must be pinned to
+    // the SAME resolved commits the trees came from, so a ref moving mid-sequence
+    // cannot yield a head tree from one commit and a status from another.
+    let seenBasehead: string | undefined;
+    const octo = {
+      repos: {
+        getCommit: async ({ ref }: { ref: string }) => {
+          const map: Record<string, string> = { BASE: "basecommitsha40", HEAD: "headcommitsha40" };
+          const sha = map[ref];
+          if (sha === undefined) throw Object.assign(new Error("Not Found"), { status: 404 });
+          return { data: { sha, commit: { tree: { sha: `tree-of-${sha}` } } } };
         },
-        paginate: async () => [],
-        pulls: { listReviews: async () => ({ data: [] }), listReviewComments: async () => ({ data: [] }) },
-        issues: { listComments: async () => ({ data: [] }) },
-        checks: { listForRef: async () => ({ data: { check_runs: [] } }) },
-      } as unknown as Octokit,
-    });
+        compareCommitsWithBasehead: async ({ basehead }: { basehead: string }) => {
+          seenBasehead = basehead;
+          return { data: { status: "ahead", commits: [] } };
+        },
+      },
+      git: {
+        getTree: async ({ tree_sha }: { tree_sha: string }) => ({
+          data: { sha: tree_sha, truncated: false, tree: [] },
+        }),
+      },
+    } as unknown as Octokit;
+    const forge = new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: octo });
+    const res = await forge.compare("BASE", "HEAD");
+    expect(res.kind).toBe("ok");
+    // The status is bound to the resolved commit SHAs, NOT the caller's raw refs.
+    expect(seenBasehead).toBe("basecommitsha40...headcommitsha40");
+    expect(seenBasehead).not.toBe("BASE...HEAD");
+  });
+
+  it("a compare throw is swallowed by findContentMatch: commit_pushed resolves failed, not an unhandled exception", async () => {
+    // Sub-shape B: a commit_pushed with expected.sha256 triggers findContentMatch,
+    // which calls forge.compare(). A malformed (truncated) tree makes compare throw;
+    // the throw must be swallowed (null = no match) and the claim resolve to a
+    // normal `failed` verdict - not an unhandled exception that crashes verify.
+    const octo = {
+      ...(treeOctokit({
+        commits: { BASE: "tb", HEAD: "th" },
+        trees: { tb: { tree: [] }, th: { truncated: true, tree: [] } },
+        status: "ahead",
+      }) as unknown as Record<string, unknown>),
+    } as unknown as Octokit;
+    // resolveCommit (separate path) needs getCommit to resolve the claimed sha AND
+    // the fallback compare-for-status; treeOctokit already provides both.
+    const forge = new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: octo });
     const claim = mkClaim({
       type: "commit_pushed",
-      subject: { sha: "deadbeefdeadbeef" },
-      expected: { sha256: "a".repeat(64) }, // triggers findContentMatch
+      subject: { sha: "deadbeefdeadbeef" }, // not in commits -> resolveCommit absent
+      expected: { sha256: "a".repeat(64) }, // triggers findContentMatch -> compare()
     });
-    // Must not throw; must resolve to a normal failed result.
     const result = await verifyClaim(claim, forge, { head: "HEAD", mergeBase: "BASE" });
     expect(result.status).toBe("failed");
     expect(result.evidence["content_match"]).toBe(false);
+  });
+});
+
+describe("GitHubForge.listFiles - authenticated tree listing (QRM-4.0 [11])", () => {
+  it("returns the blob+commit leaf set (directories filtered), matching ls-tree -r", async () => {
+    const res = await treeForge({
+      commits: { HEAD: "th" },
+      trees: {
+        th: {
+          tree: [
+            { path: "dir", mode: "040000", type: "tree", sha: "td" }, // directory - filtered
+            { path: "dir/a.ts", mode: "100644", type: "blob", sha: "s1" },
+            { path: "link", mode: "120000", type: "blob", sha: "sl" }, // symlink leaf kept
+            { path: "sub", mode: "160000", type: "commit", sha: "sc" }, // gitlink leaf kept
+          ],
+        },
+      },
+    }).listFiles("HEAD");
+    expect(res.kind).toBe("ok");
+    if (res.kind !== "ok") return;
+    expect([...res.value].sort()).toEqual(["dir/a.ts", "link", "sub"]);
+  });
+
+  it("returns absent when the ref does not resolve (404)", async () => {
+    const res = await treeForge({ commits: {}, trees: {} }).listFiles("nope");
+    expect(res.kind).toBe("absent");
   });
 });

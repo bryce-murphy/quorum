@@ -424,3 +424,56 @@ describe.skipIf(!haveBuild)("QRM-3.2 (Codex P2): tier --diff is rejected, not si
     expect(r.stdout.trim()).toMatch(/^T[0-3]$/);
   });
 });
+
+// ── QRM-4.0 (audit F5 / GPT amendment 2): the resolveEnforcement extraction to
+// the kernel (behind the PolicySource seam) must PRESERVE the subtle diagnostic
+// semantics - `--policy=head` reads the WORKING-TREE .quorum/policy.json
+// (loadPolicy: existsSync/readJson), NOT HEAD:.quorum/policy.json. A naive
+// refactor through forge.getFile("HEAD", ...) would read HEAD's committed blob
+// instead, silently changing dirty-working-tree behavior. This pins it with a
+// DIRTY tree whose policy differs from HEAD's committed policy. ────────────────
+describe.skipIf(!haveBuild)("QRM-4.0: --policy=head reads the WORKING TREE, not HEAD:.quorum/policy.json", () => {
+  let repo: string;
+  // Merge-base (C0) policy: no floor -> enforcement grades src/app.ts at T0.
+  const BASE = JSON.stringify({ schema: "quorum.policy/v1", default_floor: "T0", rules: [], exempt_paths: [".quorum/**"] });
+  // HEAD's COMMITTED policy: floors src/app.ts to T1. If --policy=head wrongly
+  // read HEAD:.quorum/policy.json it would report T1.
+  const COMMITTED = JSON.stringify({ schema: "quorum.policy/v1", default_floor: "T0", rules: [{ glob: "src/app.ts", floor: "T1" }], exempt_paths: [".quorum/**"] });
+  // The DIRTY working-tree policy: floors src/app.ts to T3. --policy=head must
+  // report THIS (T3), proving it read the working tree, not the HEAD commit.
+  const WORKINGTREE = JSON.stringify({ schema: "quorum.policy/v1", default_floor: "T0", rules: [{ glob: "src/app.ts", floor: "T3" }], exempt_paths: [".quorum/**"] });
+
+  beforeAll(() => {
+    repo = initRepo("qrm40-wt");
+    mkdirSync(join(repo, "src"), { recursive: true });
+    mkdirSync(join(repo, ".quorum"), { recursive: true });
+    // C0 on main (the merge-base): base policy, no floor.
+    writeFileSync(join(repo, "src/app.ts"), "export const app = 0;\n");
+    writeFileSync(join(repo, ".quorum/policy.json"), BASE);
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "C0 base policy (no floor)"], repo);
+
+    // feat: change src/app.ts AND commit the T1 policy into HEAD's tree.
+    git(["checkout", "-b", "feat"], repo);
+    writeFileSync(join(repo, "src/app.ts"), "export const app = 1;\n");
+    writeFileSync(join(repo, ".quorum/policy.json"), COMMITTED);
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "feat: change src/app.ts + commit T1 policy"], repo);
+
+    // Now DIRTY the working tree: T3 policy, uncommitted. HEAD still has T1.
+    writeFileSync(join(repo, ".quorum/policy.json"), WORKINGTREE);
+  });
+
+  it("default tier (enforcement) grades against the merge-base policy: T0", () => {
+    const r = runCli(["tier"], repo);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe("T0"); // base C0 policy has no floor
+  });
+
+  it("--policy=head reports T3 (working tree), NOT T1 (HEAD commit) - dirty-tree semantics preserved", () => {
+    const r = runCli(["tier", "--policy=head"], repo);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe("T3"); // the DIRTY working-tree policy, not HEAD:.quorum/policy.json (T1)
+    expect(r.stderr).toContain("NON-ENFORCEMENT");
+  });
+});
