@@ -280,26 +280,36 @@ describe("QRM-4.0 conformance: GitHubForge vs LocalGitForge parity (tree-diff-pr
 // GitHubForge trust boundary, not only in an isolated unit.
 describe("QRM-4.0 conformance: malformed tree-response fail-closed", () => {
   const cases: Array<{ name: string; resp: RawTreeResponse; error: unknown }> = [
+    // `truncated` must be a CERTIFIED boolean: `=== true`-only would let a mistyped
+    // or missing flag fall through and accept a partial tree (fail-OPEN -> dropped
+    // symlink/gitlink leaves -> under-floor). Every non-boolean spelling throws.
     { name: "truncated:true (sole overflow signal)", resp: { truncated: true, tree: [] }, error: TreeParseError },
-    { name: "missing path", resp: { tree: [{ mode: "100644", type: "blob", sha: "s" }] }, error: TreeParseError },
-    { name: "missing mode", resp: { tree: [{ path: "a", type: "blob", sha: "s" }] }, error: TreeParseError },
-    { name: "missing type", resp: { tree: [{ path: "a", mode: "100644", sha: "s" }] }, error: TreeParseError },
-    { name: "missing sha", resp: { tree: [{ path: "a", mode: "100644", type: "blob" }] }, error: TreeParseError },
-    { name: "unknown type", resp: { tree: [{ path: "a", mode: "100644", type: "weird", sha: "s" }] }, error: TreeParseError },
-    { name: "unknown mode", resp: { tree: [{ path: "a", mode: "123456", type: "blob", sha: "s" }] }, error: TreeParseError },
-    { name: "invalid pair blob+160000", resp: { tree: [{ path: "a", mode: "160000", type: "blob", sha: "s" }] }, error: TreeParseError },
-    { name: "invalid pair commit+100644", resp: { tree: [{ path: "a", mode: "100644", type: "commit", sha: "s" }] }, error: TreeParseError },
-    { name: "invalid pair tree+100644", resp: { tree: [{ path: "a", mode: "100644", type: "tree", sha: "s" }] }, error: TreeParseError },
+    { name: "truncated missing entirely", resp: { tree: [{ path: "a", mode: "100644", type: "blob", sha: "s" }] }, error: TreeParseError },
+    { name: 'truncated:"true" (string, truthy)', resp: { truncated: "true", tree: [] }, error: TreeParseError },
+    { name: 'truncated:"false" (string)', resp: { truncated: "false", tree: [] }, error: TreeParseError },
+    { name: "truncated:null", resp: { truncated: null, tree: [] }, error: TreeParseError },
+    { name: "truncated:0", resp: { truncated: 0, tree: [] }, error: TreeParseError },
+    { name: "truncated:1", resp: { truncated: 1, tree: [] }, error: TreeParseError },
+    // Content malformations - `truncated: false` so each reaches its intended check.
+    { name: "missing path", resp: { truncated: false, tree: [{ mode: "100644", type: "blob", sha: "s" }] }, error: TreeParseError },
+    { name: "missing mode", resp: { truncated: false, tree: [{ path: "a", type: "blob", sha: "s" }] }, error: TreeParseError },
+    { name: "missing type", resp: { truncated: false, tree: [{ path: "a", mode: "100644", sha: "s" }] }, error: TreeParseError },
+    { name: "missing sha", resp: { truncated: false, tree: [{ path: "a", mode: "100644", type: "blob" }] }, error: TreeParseError },
+    { name: "unknown type", resp: { truncated: false, tree: [{ path: "a", mode: "100644", type: "weird", sha: "s" }] }, error: TreeParseError },
+    { name: "unknown mode", resp: { truncated: false, tree: [{ path: "a", mode: "123456", type: "blob", sha: "s" }] }, error: TreeParseError },
+    { name: "invalid pair blob+160000", resp: { truncated: false, tree: [{ path: "a", mode: "160000", type: "blob", sha: "s" }] }, error: TreeParseError },
+    { name: "invalid pair commit+100644", resp: { truncated: false, tree: [{ path: "a", mode: "100644", type: "commit", sha: "s" }] }, error: TreeParseError },
+    { name: "invalid pair tree+100644", resp: { truncated: false, tree: [{ path: "a", mode: "100644", type: "tree", sha: "s" }] }, error: TreeParseError },
     {
       name: "duplicate raw path",
-      resp: { tree: [ { path: "a", mode: "100644", type: "blob", sha: "s1" }, { path: "a", mode: "100755", type: "blob", sha: "s2" } ] },
+      resp: { truncated: false, tree: [ { path: "a", mode: "100644", type: "blob", sha: "s1" }, { path: "a", mode: "100755", type: "blob", sha: "s2" } ] },
       error: TreeParseError,
     },
-    { name: "missing tree array entirely", resp: { truncated: false }, error: TreeParseError },
+    { name: "missing tree array entirely (well-formed truncated)", resp: { truncated: false }, error: TreeParseError },
     // normalizePath-rejected paths must fire the repo's hard-rejection layer.
-    { name: "path traversal (..)", resp: { tree: [{ path: "../evil", mode: "100644", type: "blob", sha: "s" }] }, error: PathNormalizationError },
-    { name: "absolute path", resp: { tree: [{ path: "/etc/passwd", mode: "100644", type: "blob", sha: "s" }] }, error: PathNormalizationError },
-    { name: "NUL in path", resp: { tree: [{ path: `a${NUL}b`, mode: "100644", type: "blob", sha: "s" }] }, error: PathNormalizationError },
+    { name: "path traversal (..)", resp: { truncated: false, tree: [{ path: "../evil", mode: "100644", type: "blob", sha: "s" }] }, error: PathNormalizationError },
+    { name: "absolute path", resp: { truncated: false, tree: [{ path: "/etc/passwd", mode: "100644", type: "blob", sha: "s" }] }, error: PathNormalizationError },
+    { name: "NUL in path", resp: { truncated: false, tree: [{ path: `a${NUL}b`, mode: "100644", type: "blob", sha: "s" }] }, error: PathNormalizationError },
   ];
 
   /** A forge whose getTree ALWAYS returns `resp` (getCommit/compare resolve fine),

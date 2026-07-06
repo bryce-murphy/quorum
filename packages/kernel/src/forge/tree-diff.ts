@@ -78,7 +78,29 @@ const TREE_MODE = "040000";
  * forge trust boundary, not only downstream in the floor.
  */
 export function parseTreeLeaves(res: RawTreeResponse): Map<string, TreeLeaf> {
-  if (res.truncated === true) {
+  // Completeness must be CERTIFIED, not assumed. `=== true`-only would let a
+  // mistyped flag - `"true"`/`"false"` (string, truthy), `null`, `0`, `undefined`,
+  // a missing key - fall through and the tree be accepted as complete: a fail-OPEN
+  // on malformed first-party data that silently drops symlink/gitlink leaves and
+  // under-floors (the floor is driven by newMode, so a missing leaf is a missing
+  // floor). Require a real boolean first (malformed -> throw), then the truncated
+  // case. This certifies completeness against a WELL-FORMED first-party response:
+  // `truncated: false` from an honest API means complete (documented GitHub
+  // contract; confirmed firing on real over-limit trees, B3). It does NOT - and
+  // cannot - defend against a COMPROMISED forge returning a well-formed
+  // `truncated: false` on a fabricated-short tree: Quorum reads compare, commit,
+  // and tree all from the same forge, its only oracle (principle 5); no single-
+  // source verifier can defend against its source of truth lying. A non-recursive
+  // per-subtree walk would not close that either (a lying API lies per subtree)
+  // while adding O(directories) trust-boundary surface - tracked as a
+  // scale/durability residual (Fable 5 pass), revisited only if a consumer repo
+  // approaches the tree-size cap.
+  if (typeof res.truncated !== "boolean") {
+    throw new TreeParseError(
+      "tree response 'truncated' flag missing or non-boolean: completeness cannot be certified",
+    );
+  }
+  if (res.truncated) {
     throw new TreeParseError(
       "tree response truncated: the listing is partial and cannot be trusted as complete",
     );

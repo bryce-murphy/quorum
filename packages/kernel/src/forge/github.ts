@@ -83,7 +83,9 @@ export class GitHubForge implements ForgeAdapter {
     // by `parseTreeLeaves`), matching `LocalGitForge.listFiles` (`ls-tree -r`),
     // which lists symlink and gitlink leaves too. Malformed tree data throws
     // (fail closed); an unresolvable ref is `absent`.
-    const leaves = await this.fetchLeaves(ref);
+    const resolved = await this.resolveTreeSha(ref);
+    if (resolved.kind !== "ok") return absent();
+    const leaves = await this.fetchTreeLeaves(resolved.value.treeSha);
     if (leaves.kind !== "ok") return absent();
     return ok([...leaves.value.keys()]);
   }
@@ -229,12 +231,25 @@ export class GitHubForge implements ForgeAdapter {
     // missing fields, unknown/invalid type-mode, duplicate path) -> throw, via
     // parseTreeLeaves (fail closed: enforcement input we cannot trust). Transport
     // errors propagate. The Gate must treat any non-ok result as blocking.
-    const baseLeaves = await this.fetchLeaves(base);
+    //
+    // Resolve each ref to a COMMIT SHA once, then pin every read to those SHAs so
+    // the (baseTree, headTree, status) triple is bound to two fixed commits by
+    // construction. A mutable ref that moves mid-sequence - or a misbehaving API -
+    // must not yield a head tree from one commit and a status from another. We do
+    // NOT rely on "the Gate passes immutable SHAs" (no forge-mode caller exists
+    // yet; that invariant is unenforced): the content-addressed treeSha and the
+    // commitSha come from the SAME getCommit response, and compareStatus is called
+    // with the resolved commit SHAs, never the caller's raw refs.
+    const b = await this.resolveTreeSha(base);
+    if (b.kind !== "ok") return absent();
+    const h = await this.resolveTreeSha(head);
+    if (h.kind !== "ok") return absent();
+    const baseLeaves = await this.fetchTreeLeaves(b.value.treeSha);
     if (baseLeaves.kind !== "ok") return absent();
-    const headLeaves = await this.fetchLeaves(head);
+    const headLeaves = await this.fetchTreeLeaves(h.value.treeSha);
     if (headLeaves.kind !== "ok") return absent();
     const changedPaths = diffTrees(baseLeaves.value, headLeaves.value);
-    const status = await this.compareStatus(base, head);
+    const status = await this.compareStatus(b.value.commitSha, h.value.commitSha);
     if (status.kind !== "ok") return absent();
     return ok({ status: status.value, changedPaths });
   }
@@ -263,18 +278,18 @@ export class GitHubForge implements ForgeAdapter {
     return ok({ commitSha, treeSha });
   }
 
-  /** Fetch a ref's recursive tree and reduce it to the validated leaf map shared
-   *  by `compare` and `listFiles`. An unresolvable ref (or a tree that 404s
-   *  because the ref does not exist) -> absent; malformed tree data -> throw. */
-  private async fetchLeaves(ref: string): Promise<ForgeResponse<Map<string, TreeLeaf>>> {
-    const resolved = await this.resolveTreeSha(ref);
-    if (resolved.kind !== "ok") return absent();
+  /** Fetch a recursive tree BY its content-addressed tree sha and reduce it to
+   *  the validated leaf map shared by `compare` and `listFiles`. Callers resolve
+   *  the ref to a commit+tree sha first (`resolveTreeSha`) and pass `treeSha`
+   *  here, so every read is pinned to a fixed commit. A tree that 404s -> absent;
+   *  malformed tree data -> throw. */
+  private async fetchTreeLeaves(treeSha: string): Promise<ForgeResponse<Map<string, TreeLeaf>>> {
     let data: RawTreeResponse;
     try {
       const res = await this.api.git.getTree({
         owner: this.owner,
         repo: this.repo,
-        tree_sha: resolved.value.treeSha,
+        tree_sha: treeSha,
         recursive: "1",
       });
       data = res.data;

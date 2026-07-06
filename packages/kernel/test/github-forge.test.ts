@@ -180,6 +180,38 @@ describe("GitHubForge.compare - tree-diff-primary (QRM-4.0)", () => {
     ).rejects.toThrow(/unknown status/);
   });
 
+  it("binds the triple to RESOLVED commit SHAs: compareStatus gets the resolved SHAs, not the raw refs", async () => {
+    // A mutable ref resolves to a FIXED commit. The status call must be pinned to
+    // the SAME resolved commits the trees came from, so a ref moving mid-sequence
+    // cannot yield a head tree from one commit and a status from another.
+    let seenBasehead: string | undefined;
+    const octo = {
+      repos: {
+        getCommit: async ({ ref }: { ref: string }) => {
+          const map: Record<string, string> = { BASE: "basecommitsha40", HEAD: "headcommitsha40" };
+          const sha = map[ref];
+          if (sha === undefined) throw Object.assign(new Error("Not Found"), { status: 404 });
+          return { data: { sha, commit: { tree: { sha: `tree-of-${sha}` } } } };
+        },
+        compareCommitsWithBasehead: async ({ basehead }: { basehead: string }) => {
+          seenBasehead = basehead;
+          return { data: { status: "ahead", commits: [] } };
+        },
+      },
+      git: {
+        getTree: async ({ tree_sha }: { tree_sha: string }) => ({
+          data: { sha: tree_sha, truncated: false, tree: [] },
+        }),
+      },
+    } as unknown as Octokit;
+    const forge = new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: octo });
+    const res = await forge.compare("BASE", "HEAD");
+    expect(res.kind).toBe("ok");
+    // The status is bound to the resolved commit SHAs, NOT the caller's raw refs.
+    expect(seenBasehead).toBe("basecommitsha40...headcommitsha40");
+    expect(seenBasehead).not.toBe("BASE...HEAD");
+  });
+
   it("a compare throw is swallowed by findContentMatch: commit_pushed resolves failed, not an unhandled exception", async () => {
     // Sub-shape B: a commit_pushed with expected.sha256 triggers findContentMatch,
     // which calls forge.compare(). A malformed (truncated) tree makes compare throw;
