@@ -12,6 +12,8 @@ export { applyStrictFailClosed, computeUncoveredPaths } from "./gate.js";
 export { renderLedger, renderHeadline } from "./ledger/render.js";
 
 export { computeTierFloor } from "./tier/floor.js";
+export { resolveEnforcement } from "./enforcement.js";
+export type { PolicySource, EnforcementResult } from "./enforcement.js";
 export {
   referencedFloor,
   isReferencedPath,

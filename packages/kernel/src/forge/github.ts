@@ -4,10 +4,10 @@ import { mergeReviewEndpoints } from "./review-merge.js";
 import {
   absent,
   ok,
-  unsupported,
   type CheckRun,
   type CommitInfo,
   type CompareResult,
+  type CompareStatus,
   type FileContent,
   type ForgeAdapter,
   type ForgeResponse,
@@ -15,6 +15,13 @@ import {
   type PrInfo,
   type ReviewItem,
 } from "./adapter.js";
+import {
+  diffTrees,
+  parseTreeLeaves,
+  TreeParseError,
+  type RawTreeResponse,
+  type TreeLeaf,
+} from "./tree-diff.js";
 
 export interface GitHubForgeOptions {
   token: string;
@@ -68,14 +75,17 @@ export class GitHubForge implements ForgeAdapter {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
-  async listFiles(_ref: string): Promise<ForgeResponse<readonly string[]>> {
-    // QRM-3.4 / QRM-4.0: authenticated-forge tree listing is DEFERRED (a recorded
-    // QRM-4.0 prerequisite). Reference resolution in forge mode needs it; until it
-    // lands, report `unsupported` (consistent with mode-bearing `compare`) so the
-    // resolver fails closed rather than silently resolving zero references. The
-    // CLI is --local only, so nothing currently routes reference resolution here.
-    return unsupported();
+  async listFiles(ref: string): Promise<ForgeResponse<readonly string[]>> {
+    // QRM-4.0 [11]: enumerate tracked leaf paths at `ref` from the SAME recursive-
+    // trees surface `compare` uses, so forge-mode delegated-reference resolution
+    // (QRM-3.4) fails closed on an unreadable tree rather than resolving zero
+    // references. Returns the blob+commit leaf set (tree/directory entries dropped
+    // by `parseTreeLeaves`), matching `LocalGitForge.listFiles` (`ls-tree -r`),
+    // which lists symlink and gitlink leaves too. Malformed tree data throws
+    // (fail closed); an unresolvable ref is `absent`.
+    const leaves = await this.fetchLeaves(ref);
+    if (leaves.kind !== "ok") return absent();
+    return ok([...leaves.value.keys()]);
   }
 
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {
@@ -207,18 +217,97 @@ export class GitHubForge implements ForgeAdapter {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
-  async compare(_base: string, _head: string): Promise<ForgeResponse<CompareResult>> {
-    // QRM-3.1 P2: mode-bearing GitHub compare is DEFERRED. The REST compare API
-    // returns neither git object modes (symlink 120000 / gitlink 160000) nor a
-    // rename's source path in a form this adapter maps faithfully - so building
-    // DiffEntry[] here would UNDER-FLOOR any tier/coverage decision that consumed
-    // it (modes lost, rename old-paths dropped). Fail closed: throw rather than
-    // return silently-wrong entries. The manifest requires real mode-bearing
-    // compare before the Gate treats tier-floor enforcement as complete; the CLI
-    // is --local only, so nothing currently routes tier decisions through here.
-    throw new Error(
-      "mode-bearing compare not implemented for GitHubForge (QRM-3.1 deferred; required before Gate enforcement)",
+  async compare(base: string, head: string): Promise<ForgeResponse<CompareResult>> {
+    // QRM-4.0 tree-diff-primary: derive mode-bearing DiffEntry[] from the base and
+    // head RECURSIVE git trees, NOT from the compare API's files[] (no modes, ~300
+    // cap with no truncation flag). Diff on (sha, mode) per path; renames surface
+    // as A+D by construction, which the parity contract permits (§3). The status
+    // comes from ONE compare call (per_page=1) whose files[] we ignore entirely.
+    //
+    // Envelope (§4.6): an unresolvable base or head -> absent (definitively does
+    // not exist). Malformed first-party tree data we DID receive (truncated,
+    // missing fields, unknown/invalid type-mode, duplicate path) -> throw, via
+    // parseTreeLeaves (fail closed: enforcement input we cannot trust). Transport
+    // errors propagate. The Gate must treat any non-ok result as blocking.
+    const baseLeaves = await this.fetchLeaves(base);
+    if (baseLeaves.kind !== "ok") return absent();
+    const headLeaves = await this.fetchLeaves(head);
+    if (headLeaves.kind !== "ok") return absent();
+    const changedPaths = diffTrees(baseLeaves.value, headLeaves.value);
+    const status = await this.compareStatus(base, head);
+    if (status.kind !== "ok") return absent();
+    return ok({ status: status.value, changedPaths });
+  }
+
+  /** Resolve a ref to its commit sha AND tree sha via the Commits API
+   *  (`commit.tree.sha`). We do NOT pass a commit sha to the trees endpoint and
+   *  rely on its leniency (confirmed present, B1c) - the endpoint is specified
+   *  over tree shas, so we resolve explicitly. A 404 (ref/commit absent) -> absent;
+   *  a resolvable commit whose response omits sha/tree -> throw (fail closed). */
+  private async resolveTreeSha(
+    ref: string,
+  ): Promise<ForgeResponse<{ commitSha: string; treeSha: string }>> {
+    let data: { sha?: string; commit?: { tree?: { sha?: string } } };
+    try {
+      const res = await this.api.repos.getCommit({ owner: this.owner, repo: this.repo, ref });
+      data = res.data;
+    } catch (err) {
+      if (isNotFound(err)) return absent();
+      throw err;
+    }
+    const commitSha = data.sha;
+    const treeSha = data.commit?.tree?.sha;
+    if (typeof commitSha !== "string" || typeof treeSha !== "string") {
+      throw new TreeParseError(`commit ${JSON.stringify(ref)} response missing sha or commit.tree.sha`);
+    }
+    return ok({ commitSha, treeSha });
+  }
+
+  /** Fetch a ref's recursive tree and reduce it to the validated leaf map shared
+   *  by `compare` and `listFiles`. An unresolvable ref (or a tree that 404s
+   *  because the ref does not exist) -> absent; malformed tree data -> throw. */
+  private async fetchLeaves(ref: string): Promise<ForgeResponse<Map<string, TreeLeaf>>> {
+    const resolved = await this.resolveTreeSha(ref);
+    if (resolved.kind !== "ok") return absent();
+    let data: RawTreeResponse;
+    try {
+      const res = await this.api.git.getTree({
+        owner: this.owner,
+        repo: this.repo,
+        tree_sha: resolved.value.treeSha,
+        recursive: "1",
+      });
+      data = res.data;
+    } catch (err) {
+      if (isNotFound(err)) return absent();
+      throw err;
+    }
+    return ok(parseTreeLeaves(data));
+  }
+
+  /** The compare API's top-level `status` (per_page=1 minimizes the commits[]
+   *  payload; the response's files[] is ignored entirely). Vocab-checked against
+   *  CompareStatus - an unknown value is malformed first-party data and throws
+   *  (fail closed). A 404 (base/head unresolvable) -> absent. */
+  private async compareStatus(base: string, head: string): Promise<ForgeResponse<CompareStatus>> {
+    let raw: string;
+    try {
+      const res = await this.api.repos.compareCommitsWithBasehead({
+        owner: this.owner,
+        repo: this.repo,
+        basehead: `${base}...${head}`,
+        per_page: 1,
+      });
+      raw = res.data.status;
+    } catch (err) {
+      if (isNotFound(err)) return absent();
+      throw err;
+    }
+    if (raw === "ahead" || raw === "behind" || raw === "identical" || raw === "diverged") {
+      return ok(raw);
+    }
+    throw new TreeParseError(
+      `compare returned unknown status ${JSON.stringify(raw)} (expected ahead|behind|identical|diverged)`,
     );
   }
 }

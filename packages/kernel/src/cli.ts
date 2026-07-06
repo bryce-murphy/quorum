@@ -13,9 +13,11 @@ import { extractClaims } from "./extract/index.js";
 import { verifyClaims } from "./run.js";
 import { buildLedger } from "./ledger/build.js";
 import { renderLedger } from "./ledger/render.js";
-import { computeTierFloor } from "./tier/floor.js";
-import type { ReferencedFloors } from "./tier/references.js";
-import { resolveReferencedFloors } from "./references/resolve.js";
+import {
+  resolveEnforcement as resolveEnforcementK,
+  type EnforcementResult,
+  type PolicySource,
+} from "./enforcement.js";
 import { validateArtifact } from "./validate.js";
 import { LocalGitForge } from "./forge/local-git.js";
 import { changedPaths, parseRawDiff, type DiffEntry } from "./diff.js";
@@ -207,20 +209,25 @@ async function resolveEnforcement(
   cwd: string,
   diffEntries: readonly DiffEntry[],
   headDiagnostic: boolean,
-): Promise<{ policy: Policy; referencedFloors: ReferencedFloors; floor: Tier }> {
-  let policy: Policy;
-  let referenceRef: string;
-  if (headDiagnostic) {
-    policy = loadPolicy(cwd);
-    referenceRef = "HEAD";
-  } else {
-    referenceRef = canonicalForkPoint(cwd);
-    policy = loadPolicyAtRef(referenceRef, cwd);
-  }
-  const repoReader = new LocalGitForge({ cwd });
-  const referencedFloors = await resolveReferencedFloors(policy, repoReader, referenceRef);
-  const floor = computeTierFloor(diffEntries, policy, referencedFloors);
-  return { policy, referencedFloors, floor };
+): Promise<EnforcementResult> {
+  // QRM-4.0 (audit F5): the enforcement COMPOSITION now lives in the kernel
+  // (`resolveEnforcementK`, parameterized over ForgeAdapter) so the forge-mode
+  // Gate shares it. The CLI's only job is to build the PolicySource - and that is
+  // exactly where the working-tree-vs-ref provenance decision must stay:
+  //   - diagnostic: loadPolicy(cwd) reads the WORKING-TREE .quorum/policy.json
+  //     (existsSync/readJson), references resolved at HEAD. NOT HEAD:.quorum/
+  //     policy.json - reducing it to forge.getFile("HEAD", ...) would silently
+  //     change dirty-working-tree diagnostic semantics (GPT amendment 2).
+  //   - enforcement: loadPolicyAtRef(canonicalForkPoint) - policy AND references
+  //     from the canonical fork point (pinned to main, not the --base-overridable
+  //     diff base - red-team R1).
+  const source: PolicySource = headDiagnostic
+    ? { policy: loadPolicy(cwd), referenceRef: "HEAD" }
+    : (() => {
+        const referenceRef = canonicalForkPoint(cwd);
+        return { policy: loadPolicyAtRef(referenceRef, cwd), referenceRef };
+      })();
+  return resolveEnforcementK(source, new LocalGitForge({ cwd }), diffEntries);
 }
 
 // -- quorum verify -------------------------------------------------------------
