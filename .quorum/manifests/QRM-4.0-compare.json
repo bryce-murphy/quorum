@@ -18,7 +18,7 @@
     "satisfies QRM-4.0 prerequisites [5] and [11] and unblocks [4]; does NOT claim [1] base-policy-read wiring, [2] branch-freshness, [3] trusted verifier, or the Gate itself (principle 2)"
   ],
   "branch": "qrm-4.0-compare-parity",
-  "state": "planned",
+  "state": "merged",
   "agents": {
     "builder": "claude-opus-4-8",
     "reviewer": "gpt-codex"
