@@ -238,6 +238,63 @@ describe("GitHubForge.compare - tree-diff-primary (QRM-4.0)", () => {
   });
 });
 
+// QRM-4.0-policy-read §4.1: `getFile` must certify `data.encoding === "base64"`
+// BEFORE decoding, rather than falling through to `Buffer.from("", "base64")`
+// on the contents API's `encoding:"none"` shape (blobs > 1MB). Pinned for BOTH
+// a policy file and a reference-bearing config: for policy.json today's gap is
+// an ACCIDENTAL block (empty content -> JSON.parse throws), but for a
+// reference-bearing CLAUDE.md, empty content resolves to ZERO references (no
+// throw) - a silent under-floor. The guard converts both into an explicit throw.
+function contentOctokit(shapeByPath: Record<string, { encoding?: string; content?: string; type?: string }>): Octokit {
+  return {
+    repos: {
+      getContent: async ({ path }: { path: string }) => {
+        const shape = shapeByPath[path];
+        if (shape === undefined) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return { data: { type: shape.type ?? "file", encoding: shape.encoding, content: shape.content } };
+      },
+    },
+  } as unknown as Octokit;
+}
+const contentForge = (shapeByPath: Record<string, { encoding?: string; content?: string; type?: string }>) =>
+  new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: contentOctokit(shapeByPath) });
+
+describe("GitHubForge.getFile - strict content-encoding certification (QRM-4.0-policy-read §4.1)", () => {
+  it("throws on encoding:'none' for .quorum/policy.json (do not decode as empty)", async () => {
+    await expect(
+      contentForge({ ".quorum/policy.json": { encoding: "none", content: "" } }).getFile("SHA", ".quorum/policy.json"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("throws on encoding:'none' for a reference-bearing CLAUDE.md (the sharper under-floor case)", async () => {
+    await expect(
+      contentForge({ "CLAUDE.md": { encoding: "none", content: "" } }).getFile("SHA", "CLAUDE.md"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("throws when encoding is missing entirely, not just 'none'", async () => {
+    await expect(
+      contentForge({ "CLAUDE.md": { content: "QGRvY3MvYS5tZA==" } }).getFile("SHA", "CLAUDE.md"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("still decodes normally when encoding is 'base64'", async () => {
+    const res = await contentForge({
+      "CLAUDE.md": { encoding: "base64", content: Buffer.from("@docs/a.md\n", "utf8").toString("base64") },
+    }).getFile("SHA", "CLAUDE.md");
+    expect(res.kind).toBe("ok");
+    if (res.kind !== "ok") return;
+    expect(res.value.content).toBe("@docs/a.md\n");
+  });
+
+  it("a symlink/non-file entry stays 'absent' regardless of encoding (unchanged behavior)", async () => {
+    const res = await contentForge({
+      link: { type: "symlink", encoding: "base64", content: "irrelevant" },
+    }).getFile("SHA", "link");
+    expect(res.kind).toBe("absent");
+  });
+});
+
 describe("GitHubForge.listFiles - authenticated tree listing (QRM-4.0 [11])", () => {
   it("returns the blob+commit leaf set (directories filtered), matching ls-tree -r", async () => {
     const res = await treeForge({

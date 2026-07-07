@@ -39,6 +39,18 @@ function isNotFound(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { status?: number }).status === 404;
 }
 
+/** A file we cannot certify as readable base64 content (QRM-4.0-policy-read
+ *  §4.1) - e.g. the contents API's `encoding:"none"` for blobs > 1MB. Thrown,
+ *  never swallowed into `absent`: an unreadable blob is not an absence, and
+ *  treating it as one would let a >1MB `CLAUDE.md` silently resolve ZERO
+ *  delegated references (`extractClaudeMdReferences("")` -> `[]`, no throw). */
+export class ContentEncodingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ContentEncodingError";
+  }
+}
+
 /**
  * `ForgeAdapter` over the GitHub REST API, authenticated with a short-lived
  * App-identity token (SPEC 1.1 app-as-identity). 404s map to `absent`; other
@@ -63,12 +75,56 @@ export class GitHubForge implements ForgeAdapter {
     try {
       const res = await this.api.repos.getContent({ owner: this.owner, repo: this.repo, path, ref });
       const data = res.data;
-      if (Array.isArray(data) || data.type !== "file" || typeof data.content !== "string") {
+      if (Array.isArray(data) || data.type !== "file") {
         return absent();
+      }
+      // QRM-4.0-policy-read §4.1: the contents API returns encoding:"none" (with
+      // empty/absent content) for blobs > 1MB. Previously this fell through to
+      // `typeof data.content !== "string"` only when content was literally
+      // missing - an empty STRING (the common real shape) passed straight to
+      // `Buffer.from("", "base64")`, decoding to zero bytes with no error. That
+      // was fail-closed only by accident for policy.json (empty -> JSON.parse
+      // throws). For a reference-bearing config it is a silent UNDER-FLOOR:
+      // `extractClaudeMdReferences("")` returns `[]`, not a throw. Certify the
+      // encoding (and that content is actually present) BEFORE decoding, so an
+      // unreadable blob is an explicit block, not an accidental one.
+      if (data.encoding !== "base64" || typeof data.content !== "string") {
+        throw new ContentEncodingError(
+          `getFile(${JSON.stringify(path)}) at ${JSON.stringify(ref)}: cannot certify content as base64 ` +
+            `(encoding=${JSON.stringify(data.encoding)}) - refusing to treat as absent or decode`,
+        );
       }
       // Hash the decoded RAW bytes; expose a UTF-8 view for display only.
       const bytes = Buffer.from(data.content, "base64");
       return ok({ content: bytes.toString("utf8"), sha256: sha256(bytes) });
+    } catch (err) {
+      if (isNotFound(err)) return absent();
+      throw err;
+    }
+  }
+
+  /**
+   * Resolve the canonical fork point between `base` and `head` to a commit SHA
+   * via the compare API's `merge_base_commit.sha` (QRM-4.0-policy-read [1]) -
+   * the forge analog of local's `git merge-base`. Distinct from the public
+   * `compare()` above (tree-diff-primary; that surface never reads this
+   * field). The raw value is returned UNVALIDATED (`unknown`) - shape
+   * certification (full 40-hex commit SHA) is `forgePolicySource`'s job, not
+   * this method's, because that certification is load-bearing for the CALLER's
+   * single-SHA binding, not a formality here.
+   *
+   * A 404 (base or head unresolvable) -> absent; transport errors propagate.
+   */
+  async resolveMergeBase(base: string, head: string): Promise<ForgeResponse<unknown>> {
+    try {
+      const res = await this.api.repos.compareCommitsWithBasehead({
+        owner: this.owner,
+        repo: this.repo,
+        basehead: `${base}...${head}`,
+        per_page: 1,
+      });
+      const data = res.data as { merge_base_commit?: { sha?: unknown } };
+      return ok(data.merge_base_commit?.sha);
     } catch (err) {
       if (isNotFound(err)) return absent();
       throw err;
