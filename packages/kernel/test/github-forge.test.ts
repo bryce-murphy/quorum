@@ -238,6 +238,126 @@ describe("GitHubForge.compare - tree-diff-primary (QRM-4.0)", () => {
   });
 });
 
+// QRM-4.0-policy-read §4.1: `getFile` must certify `data.encoding === "base64"`
+// BEFORE decoding, rather than falling through to `Buffer.from("", "base64")`
+// on the contents API's `encoding:"none"` shape (blobs > 1MB). Pinned for BOTH
+// a policy file and a reference-bearing config: for policy.json today's gap is
+// an ACCIDENTAL block (empty content -> JSON.parse throws), but for a
+// reference-bearing CLAUDE.md, empty content resolves to ZERO references (no
+// throw) - a silent under-floor. The guard converts both into an explicit throw.
+function contentOctokit(shapeByPath: Record<string, { encoding?: string; content?: string; type?: string }>): Octokit {
+  return {
+    repos: {
+      getContent: async ({ path }: { path: string }) => {
+        const shape = shapeByPath[path];
+        if (shape === undefined) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return { data: { type: shape.type ?? "file", encoding: shape.encoding, content: shape.content } };
+      },
+    },
+  } as unknown as Octokit;
+}
+const contentForge = (shapeByPath: Record<string, { encoding?: string; content?: string; type?: string }>) =>
+  new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: contentOctokit(shapeByPath) });
+
+describe("GitHubForge.getFile - strict content-encoding certification (QRM-4.0-policy-read §4.1)", () => {
+  it("throws on encoding:'none' for .quorum/policy.json (do not decode as empty)", async () => {
+    await expect(
+      contentForge({ ".quorum/policy.json": { encoding: "none", content: "" } }).getFile("SHA", ".quorum/policy.json"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("throws on encoding:'none' for a reference-bearing CLAUDE.md (the sharper under-floor case)", async () => {
+    await expect(
+      contentForge({ "CLAUDE.md": { encoding: "none", content: "" } }).getFile("SHA", "CLAUDE.md"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("throws when encoding is missing entirely, not just 'none'", async () => {
+    await expect(
+      contentForge({ "CLAUDE.md": { content: "QGRvY3MvYS5tZA==" } }).getFile("SHA", "CLAUDE.md"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("throws on an unexpected non-'none' encoding value (e.g. 'utf-8')", async () => {
+    await expect(
+      contentForge({ "CLAUDE.md": { encoding: "utf-8", content: "@docs/a.md\n" } }).getFile("SHA", "CLAUDE.md"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("throws when encoding claims 'base64' but content is missing", async () => {
+    await expect(
+      contentForge({ "CLAUDE.md": { encoding: "base64" } }).getFile("SHA", "CLAUDE.md"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("still decodes normally when encoding is 'base64'", async () => {
+    const res = await contentForge({
+      "CLAUDE.md": { encoding: "base64", content: Buffer.from("@docs/a.md\n", "utf8").toString("base64") },
+    }).getFile("SHA", "CLAUDE.md");
+    expect(res.kind).toBe("ok");
+    if (res.kind !== "ok") return;
+    expect(res.value.content).toBe("@docs/a.md\n");
+  });
+
+  it("a symlink/non-file entry stays 'absent' regardless of encoding (unchanged behavior)", async () => {
+    const res = await contentForge({
+      link: { type: "symlink", encoding: "base64", content: "irrelevant" },
+    }).getFile("SHA", "link");
+    expect(res.kind).toBe("absent");
+  });
+});
+
+// QRM-4.0-policy-read Codex round 1 (CONCERN B): `resolveMergeBase` must certify
+// its OWN output (full lowercase 40-hex commit SHA) before returning `ok`,
+// asserting the real compare-API contract rather than leaving certification
+// entirely to a downstream caller. `forgePolicySource` re-certifies the head
+// input separately (policy-source.test.ts) - this block covers the METHOD's
+// own output-shape guarantee in isolation.
+function mergeBaseOctokit(shaByBasehead: Record<string, unknown>): Octokit {
+  return {
+    repos: {
+      compareCommitsWithBasehead: async ({ basehead }: { basehead: string }) => {
+        if (!(basehead in shaByBasehead)) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return { data: { merge_base_commit: { sha: shaByBasehead[basehead] } } };
+      },
+    },
+  } as unknown as Octokit;
+}
+const mergeBaseForge = (shaByBasehead: Record<string, unknown>): GitHubForge =>
+  new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: mergeBaseOctokit(shaByBasehead) });
+
+describe("GitHubForge.resolveMergeBase - output certification (QRM-4.0-policy-read Codex round 1)", () => {
+  const badShapes: Record<string, unknown> = {
+    missing: undefined,
+    "non-string": 12345,
+    short: "abc123",
+    "branch-like (main)": "main",
+    "branch-like (refs/heads/main)": "refs/heads/main",
+    uppercase: "A".repeat(40),
+    "wrong-length (39)": "a".repeat(39),
+    "wrong-length (41)": "a".repeat(41),
+    "non-hex": "g".repeat(40),
+  };
+  for (const [label, sha] of Object.entries(badShapes)) {
+    it(`throws when merge_base_commit.sha is ${label}`, async () => {
+      await expect(mergeBaseForge({ "BASE...HEAD": sha }).resolveMergeBase("BASE", "HEAD")).rejects.toThrow(
+        /40-hex/,
+      );
+    });
+  }
+
+  it("returns the certified sha wrapped in 'ok' on a well-formed response", async () => {
+    const sha = "c".repeat(40);
+    const res = await mergeBaseForge({ "BASE...HEAD": sha }).resolveMergeBase("BASE", "HEAD");
+    expect(res).toEqual({ kind: "ok", value: sha });
+  });
+
+  it("returns absent when base/head is unresolvable (404), not a certification throw", async () => {
+    const res = await mergeBaseForge({}).resolveMergeBase("BASE", "HEAD");
+    expect(res.kind).toBe("absent");
+  });
+});
+
 describe("GitHubForge.listFiles - authenticated tree listing (QRM-4.0 [11])", () => {
   it("returns the blob+commit leaf set (directories filtered), matching ls-tree -r", async () => {
     const res = await treeForge({
