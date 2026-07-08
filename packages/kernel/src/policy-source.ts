@@ -49,19 +49,29 @@ function certifyCommitSha(value: unknown, label: string): string {
  *
  * `prHeadSha` is the authenticated PR head COMMIT SHA (`getPR().headSha`),
  * never a mutable/collidable branch label (`headRef`) - a fork PR's
- * unqualified branch name is neither immutable nor globally unique.
+ * unqualified branch name is neither immutable nor globally unique. This is
+ * CERTIFIED (full 40-hex) before it reaches any network call: a caller that
+ * passes `headRef` instead of `headSha` by mistake must fail loudly, not
+ * silently resolve a merge-base against an attacker-influenceable branch
+ * label (Codex round 1, BLOCK - the pre-fix code only certified the
+ * *returned* merge-base sha, never the head sha it was computed FROM).
  *
  * Sequence, all fail-closed:
- *  1. Resolve the fork point via `forge.resolveMergeBase(protectedBaseBranch,
- *     prHeadSha)` and certify it as a full 40-hex commit SHA BEFORE any read
- *     is pinned to it. An unresolvable base/head (`absent`) or an uncertified
- *     shape -> throw.
- *  2. Read `.quorum/policy.json` at that resolved SHA
+ *  1. Certify `prHeadSha` as a full 40-hex commit SHA BEFORE any compare/
+ *     getFile call - a branch-like/short/uppercase/non-hex head throws here,
+ *     before the network is touched at all.
+ *  2. Resolve the fork point via `forge.resolveMergeBase(protectedBaseBranch,
+ *     certifiedHeadSha)` (itself returns an already-certified sha - see
+ *     `GitHubForge.resolveMergeBase`); re-certified here too as
+ *     defense-in-depth so this function's own fail-closed invariant does not
+ *     depend on the callee's. An unresolvable base/head (`absent`) or an
+ *     uncertified shape -> throw.
+ *  3. Read `.quorum/policy.json` at that resolved SHA
  *     (`forge.getFile(mergeBaseSha, ...)`). Absent - 404, or a non-file type
  *     e.g. a symlinked policy - -> throw. Never a default.
- *  3. Parse + validate with the SAME `PolicySchema` the local path uses. Bad
+ *  4. Parse + validate with the SAME `PolicySchema` the local path uses. Bad
  *     JSON or a schema-rejected policy -> throw.
- *  4. Return `{ policy, referenceRef: mergeBaseSha }` - the resolved commit
+ *  5. Return `{ policy, referenceRef: mergeBaseSha }` - the resolved commit
  *     SHA, never `protectedBaseBranch` or `prHeadSha` - so
  *     `resolveReferencedFloors` reads delegated configs from the IDENTICAL
  *     commit the policy came from. TOCTOU between "resolve fork point" and
@@ -77,11 +87,13 @@ export async function forgePolicySource(
   protectedBaseBranch: string,
   prHeadSha: string,
 ): Promise<PolicySource> {
-  const mb = await forge.resolveMergeBase(protectedBaseBranch, prHeadSha);
+  const certifiedHeadSha = certifyCommitSha(prHeadSha, "prHeadSha");
+
+  const mb = await forge.resolveMergeBase(protectedBaseBranch, certifiedHeadSha);
   if (mb.kind !== "ok") {
     throw new PolicyReadError(
       `could not resolve the fork point between ${JSON.stringify(protectedBaseBranch)} ` +
-        `and ${JSON.stringify(prHeadSha)}`,
+        `and ${JSON.stringify(certifiedHeadSha)}`,
     );
   }
   const mergeBaseSha = certifyCommitSha(mb.value, "merge_base_commit.sha");

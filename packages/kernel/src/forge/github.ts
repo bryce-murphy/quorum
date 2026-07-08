@@ -108,14 +108,22 @@ export class GitHubForge implements ForgeAdapter {
    * via the compare API's `merge_base_commit.sha` (QRM-4.0-policy-read [1]) -
    * the forge analog of local's `git merge-base`. Distinct from the public
    * `compare()` above (tree-diff-primary; that surface never reads this
-   * field). The raw value is returned UNVALIDATED (`unknown`) - shape
-   * certification (full 40-hex commit SHA) is `forgePolicySource`'s job, not
-   * this method's, because that certification is load-bearing for the CALLER's
-   * single-SHA binding, not a formality here.
+   * field).
+   *
+   * The returned sha is CERTIFIED (full lowercase 40-hex) before this method
+   * hands it back - asserting the real compare-API contract (the field is
+   * always a full commit sha), not over-fitting to one caller. A present-but-
+   * malformed sha (missing / non-string / short / branch-like / uppercase /
+   * wrong-length) is malformed first-party data and throws, same as any other
+   * `TreeParseError` vocab check in this file (e.g. `compareStatus` below).
+   * This does NOT certify `base`/`head` themselves - they are general refs
+   * for a general compare primitive; the immutable-head requirement is
+   * `forgePolicySource`'s threat-model-specific concern and is certified
+   * there, at that call site, not buried here.
    *
    * A 404 (base or head unresolvable) -> absent; transport errors propagate.
    */
-  async resolveMergeBase(base: string, head: string): Promise<ForgeResponse<unknown>> {
+  async resolveMergeBase(base: string, head: string): Promise<ForgeResponse<string>> {
     try {
       const res = await this.api.repos.compareCommitsWithBasehead({
         owner: this.owner,
@@ -124,7 +132,14 @@ export class GitHubForge implements ForgeAdapter {
         per_page: 1,
       });
       const data = res.data as { merge_base_commit?: { sha?: unknown } };
-      return ok(data.merge_base_commit?.sha);
+      const sha = data.merge_base_commit?.sha;
+      if (typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha)) {
+        throw new TreeParseError(
+          `compare(${JSON.stringify(base)}...${JSON.stringify(head)}) merge_base_commit.sha is not a full ` +
+            `40-hex commit SHA: ${JSON.stringify(sha)}`,
+        );
+      }
+      return ok(sha);
     } catch (err) {
       if (isNotFound(err)) return absent();
       throw err;

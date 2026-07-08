@@ -278,6 +278,18 @@ describe("GitHubForge.getFile - strict content-encoding certification (QRM-4.0-p
     ).rejects.toThrow(/encoding/);
   });
 
+  it("throws on an unexpected non-'none' encoding value (e.g. 'utf-8')", async () => {
+    await expect(
+      contentForge({ "CLAUDE.md": { encoding: "utf-8", content: "@docs/a.md\n" } }).getFile("SHA", "CLAUDE.md"),
+    ).rejects.toThrow(/encoding/);
+  });
+
+  it("throws when encoding claims 'base64' but content is missing", async () => {
+    await expect(
+      contentForge({ "CLAUDE.md": { encoding: "base64" } }).getFile("SHA", "CLAUDE.md"),
+    ).rejects.toThrow(/encoding/);
+  });
+
   it("still decodes normally when encoding is 'base64'", async () => {
     const res = await contentForge({
       "CLAUDE.md": { encoding: "base64", content: Buffer.from("@docs/a.md\n", "utf8").toString("base64") },
@@ -291,6 +303,57 @@ describe("GitHubForge.getFile - strict content-encoding certification (QRM-4.0-p
     const res = await contentForge({
       link: { type: "symlink", encoding: "base64", content: "irrelevant" },
     }).getFile("SHA", "link");
+    expect(res.kind).toBe("absent");
+  });
+});
+
+// QRM-4.0-policy-read Codex round 1 (CONCERN B): `resolveMergeBase` must certify
+// its OWN output (full lowercase 40-hex commit SHA) before returning `ok`,
+// asserting the real compare-API contract rather than leaving certification
+// entirely to a downstream caller. `forgePolicySource` re-certifies the head
+// input separately (policy-source.test.ts) - this block covers the METHOD's
+// own output-shape guarantee in isolation.
+function mergeBaseOctokit(shaByBasehead: Record<string, unknown>): Octokit {
+  return {
+    repos: {
+      compareCommitsWithBasehead: async ({ basehead }: { basehead: string }) => {
+        if (!(basehead in shaByBasehead)) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return { data: { merge_base_commit: { sha: shaByBasehead[basehead] } } };
+      },
+    },
+  } as unknown as Octokit;
+}
+const mergeBaseForge = (shaByBasehead: Record<string, unknown>): GitHubForge =>
+  new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: mergeBaseOctokit(shaByBasehead) });
+
+describe("GitHubForge.resolveMergeBase - output certification (QRM-4.0-policy-read Codex round 1)", () => {
+  const badShapes: Record<string, unknown> = {
+    missing: undefined,
+    "non-string": 12345,
+    short: "abc123",
+    "branch-like (main)": "main",
+    "branch-like (refs/heads/main)": "refs/heads/main",
+    uppercase: "A".repeat(40),
+    "wrong-length (39)": "a".repeat(39),
+    "wrong-length (41)": "a".repeat(41),
+    "non-hex": "g".repeat(40),
+  };
+  for (const [label, sha] of Object.entries(badShapes)) {
+    it(`throws when merge_base_commit.sha is ${label}`, async () => {
+      await expect(mergeBaseForge({ "BASE...HEAD": sha }).resolveMergeBase("BASE", "HEAD")).rejects.toThrow(
+        /40-hex/,
+      );
+    });
+  }
+
+  it("returns the certified sha wrapped in 'ok' on a well-formed response", async () => {
+    const sha = "c".repeat(40);
+    const res = await mergeBaseForge({ "BASE...HEAD": sha }).resolveMergeBase("BASE", "HEAD");
+    expect(res).toEqual({ kind: "ok", value: sha });
+  });
+
+  it("returns absent when base/head is unresolvable (404), not a certification throw", async () => {
+    const res = await mergeBaseForge({}).resolveMergeBase("BASE", "HEAD");
     expect(res.kind).toBe("absent");
   });
 });
