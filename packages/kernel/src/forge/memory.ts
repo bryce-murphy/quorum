@@ -27,6 +27,9 @@ export interface MemoryForgeData {
   files?: Record<string, Record<string, string>>;
   /** Shas that are resolvable AND reachable from head. */
   commits?: string[];
+  /** ref -> tip commit sha (QRM-4.0-branch-freshness [2]). Feeds resolveRefCommit;
+   *  a ref not listed here resolves to `absent`. */
+  refs?: Record<string, string>;
   prs?: Record<number, { headRef: string; headSha: string }>;
   issues?: Record<number, { author: string }>;
   reviews?: Record<number, ReviewEndpoints>;
@@ -66,6 +69,13 @@ export class MemoryForge implements ForgeAdapter {
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {
     if (this.blocked("resolveCommit")) return unsupported();
     return this.data.commits?.includes(sha) ? ok({ sha }) : absent();
+  }
+
+  async resolveRefCommit(ref: string): Promise<ForgeResponse<string>> {
+    if (this.blocked("resolveRefCommit")) return unsupported();
+    const sha = this.data.refs?.[ref];
+    if (sha === undefined) return absent();
+    return ok(sha);
   }
 
   async getPR(n: number): Promise<ForgeResponse<PrInfo>> {

@@ -1,6 +1,7 @@
 import { PolicySchema } from "@quorum/contracts";
 import type { PolicySource } from "./enforcement.js";
 import type { GitHubForge } from "./forge/github.js";
+import { assertBranchFreshness } from "./branch-freshness.js";
 
 const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/;
 
@@ -56,47 +57,76 @@ function certifyCommitSha(value: unknown, label: string): string {
  * label (Codex round 1, BLOCK - the pre-fix code only certified the
  * *returned* merge-base sha, never the head sha it was computed FROM).
  *
+ * FRESHNESS-BOUND (QRM-4.0-branch-freshness [2], design §3.3 / GPT amendment 2).
+ * This function calls `assertBranchFreshness` internally and grades against the
+ * fork point IT returns, so it is structurally impossible to obtain a Gate-facing
+ * policy without a freshness attestation. That closes the stale-fork /
+ * old-permissive-policy channel [1] deferred to [2]: the fork-point policy is
+ * only "current" when `merge_base(protectedBaseBranch, head) === tip(protected)`.
+ * Weighing the two failure modes, a forgotten composition at [0] would be a
+ * silent under-floor (an under-floor), while over-coupling merely over-blocks
+ * stale branches (an over-block) - the calibration binds the seam. Safe to do
+ * now precisely because [1] shipped this with ZERO forge-mode callers, so there
+ * is no caller to break. `assertBranchFreshness` stays exported as a primitive.
+ *
  * Sequence, all fail-closed:
- *  1. Certify `prHeadSha` as a full 40-hex commit SHA BEFORE any compare/
- *     getFile call - a branch-like/short/uppercase/non-hex head throws here,
- *     before the network is touched at all.
- *  2. Resolve the fork point via `forge.resolveMergeBase(protectedBaseBranch,
- *     certifiedHeadSha)` (itself returns an already-certified sha - see
- *     `GitHubForge.resolveMergeBase`); re-certified here too as
- *     defense-in-depth so this function's own fail-closed invariant does not
- *     depend on the callee's. An unresolvable base/head (`absent`) or an
- *     uncertified shape -> throw.
- *  3. Read `.quorum/policy.json` at that resolved SHA
+ *  1. Certify `prHeadSha` as a full 40-hex commit SHA BEFORE any network call -
+ *     a branch-like/short/uppercase/non-hex head throws here (`PolicyReadError`),
+ *     before the network is touched at all. This is a redundant BACKSTOP: step 2
+ *     re-certifies it as `assertBranchFreshness`'s own first statement. Kept so
+ *     the [1] Codex-BLOCK regression pin stays live at THIS surface even if the
+ *     callee's certification later changes.
+ *  2. `assertBranchFreshness(forge, protectedBaseBranch, certifiedHeadSha)` -
+ *     certifies the head, resolves the merge base (FIRST) and the protected tip
+ *     (SECOND), and returns the certified fork point ONLY if the branch is up to
+ *     date. A stale fork -> `BranchFreshnessError`; an unresolvable base/head ->
+ *     a correct-by-layer block; a malformed forge SHA -> `TreeParseError`. All
+ *     propagate uncaught (catch-all: any throw blocks).
+ *  3. Re-certify the returned fork point (the ~line-99 [1] regression backstop -
+ *     redundant with the callee, fires only if that regresses; KEEP).
+ *  4. Read `.quorum/policy.json` at that resolved SHA
  *     (`forge.getFile(mergeBaseSha, ...)`). Absent - 404, or a non-file type
  *     e.g. a symlinked policy - -> throw. Never a default.
- *  4. Parse + validate with the SAME `PolicySchema` the local path uses. Bad
+ *  5. Parse + validate with the SAME `PolicySchema` the local path uses. Bad
  *     JSON or a schema-rejected policy -> throw.
- *  5. Return `{ policy, referenceRef: mergeBaseSha }` - the resolved commit
+ *  6. Return `{ policy, referenceRef: mergeBaseSha }` - the resolved commit
  *     SHA, never `protectedBaseBranch` or `prHeadSha` - so
  *     `resolveReferencedFloors` reads delegated configs from the IDENTICAL
  *     commit the policy came from. TOCTOU between "resolve fork point" and
  *     "read policy/references" is structurally impossible: one SHA, threaded
  *     everywhere by the shared `resolveEnforcement` seam.
  *
- * Does not claim [2] (branch-freshness), [3] (trusted/pinned verifier), or
- * [0] (wiring `quorum-verify` as a required check / the L2 Gate). No CLI
- * caller routes here - the CLI stays `--local`; forge-mode wiring is [0].
+ * Does not claim [3] (trusted/pinned verifier) or [0] (wiring `quorum-verify`
+ * as a required check / the L2 Gate). No CLI caller routes here - the CLI stays
+ * `--local`; forge-mode wiring is [0]. [2] proves freshness at VERIFICATION time
+ * only; the grade-to-merge race (protected advancing between verify and merge)
+ * is closed at [0] by strict required-check semantics, not here.
  */
 export async function forgePolicySource(
   forge: GitHubForge,
   protectedBaseBranch: string,
   prHeadSha: string,
 ): Promise<PolicySource> {
+  // Backstop cert (step 1): certify the immutable head BEFORE any network call
+  // ([1] Codex BLOCK). `assertBranchFreshness` re-certifies as its own first
+  // statement; this keeps the [1] regression pin live at THIS surface.
   const certifiedHeadSha = certifyCommitSha(prHeadSha, "prHeadSha");
 
-  const mb = await forge.resolveMergeBase(protectedBaseBranch, certifiedHeadSha);
-  if (mb.kind !== "ok") {
-    throw new PolicyReadError(
-      `could not resolve the fork point between ${JSON.stringify(protectedBaseBranch)} ` +
-        `and ${JSON.stringify(certifiedHeadSha)}`,
-    );
-  }
-  const mergeBaseSha = certifyCommitSha(mb.value, "merge_base_commit.sha");
+  // Freshness binding (step 2, design §3.3): grade only against the fork point
+  // an up-to-date protected branch yields. A stale fork, an unresolvable
+  // base/head, or a malformed forge SHA throws (any throw blocks) - no policy is
+  // ever obtained on a stale fork.
+  const { mergeBaseSha: attestedForkPoint } = await assertBranchFreshness(
+    forge,
+    protectedBaseBranch,
+    certifiedHeadSha,
+  );
+
+  // ~line-99 regression backstop (step 3, KEEP): re-certify the fork point this
+  // function threads into every getFile/reference read. Redundant now that both
+  // resolveMergeBase and assertBranchFreshness certify by construction; fires
+  // only if that regresses.
+  const mergeBaseSha = certifyCommitSha(attestedForkPoint, "merge_base_commit.sha");
 
   const file = await forge.getFile(mergeBaseSha, ".quorum/policy.json");
   if (file.kind !== "ok") {

@@ -84,4 +84,14 @@ export interface ForgeAdapter {
   getReviewsAllEndpoints(pr: number): Promise<ForgeResponse<readonly ReviewItem[]>>;
   getCheckRuns(sha: string): Promise<ForgeResponse<readonly CheckRun[]>>;
   compare(base: string, head: string): Promise<ForgeResponse<CompareResult>>;
+  /** Resolve `ref` to its tip COMMIT SHA, CERTIFIED full-lowercase-40-hex by
+   *  construction (QRM-4.0-branch-freshness [2], design §3.1) - the same
+   *  discipline `GitHubForge.resolveMergeBase` applies to `merge_base_commit.sha`,
+   *  so both sides of a freshness equality (`merge_base(protected, head)` vs
+   *  `tip(protected)`) are certified symmetrically. A present-but-malformed sha
+   *  is malformed first-party data and throws; an unresolvable ref -> `absent`
+   *  (absence is never freshness). Distinct from `resolveCommit`, which answers a
+   *  commit-membership question against this branch's delta, not "what commit is
+   *  at the tip of this ref". */
+  resolveRefCommit(ref: string): Promise<ForgeResponse<string>>;
 }

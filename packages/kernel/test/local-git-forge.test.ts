@@ -54,4 +54,21 @@ describe("LocalGitForge - blob requirement (FIX 2) and in-delta commits (FIX 3)"
     const forge = new LocalGitForge({ cwd: repo, head: deltaSha, mergeBase: baseSha });
     expect((await forge.resolveCommit("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")).kind).toBe("absent");
   });
+
+  // QRM-4.0-branch-freshness [2], design §3.1: resolveRefCommit resolves a ref to
+  // its certified 40-hex tip commit sha (the local analog of GitHubForge's
+  // getCommit-based resolver). Honest for plain git - NOT `unsupported`.
+  it("resolveRefCommit resolves a branch to its certified 40-hex tip commit sha", async () => {
+    const forge = new LocalGitForge({ cwd: repo, head: "HEAD" });
+    const onMain = await forge.resolveRefCommit("main");
+    expect(onMain).toEqual({ kind: "ok", value: baseSha }); // main's tip is C0
+    const onFeat = await forge.resolveRefCommit("feat");
+    expect(onFeat).toEqual({ kind: "ok", value: deltaSha }); // feat's tip is C1
+    if (onMain.kind === "ok") expect(/^[0-9a-f]{40}$/.test(onMain.value)).toBe(true);
+  });
+
+  it("resolveRefCommit returns absent for an unresolvable ref (bad ref never freshness)", async () => {
+    const forge = new LocalGitForge({ cwd: repo, head: "HEAD" });
+    expect((await forge.resolveRefCommit("no-such-branch")).kind).toBe("absent");
+  });
 });
