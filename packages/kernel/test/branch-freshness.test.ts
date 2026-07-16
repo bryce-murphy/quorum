@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import type { Octokit } from "@octokit/rest";
 import { GitHubForge } from "../src/forge/github.js";
 import { TreeParseError } from "../src/forge/tree-diff.js";
-import { assertBranchFreshness, BranchFreshnessError } from "../src/branch-freshness.js";
+import {
+  assertBranchFreshness,
+  BranchFreshnessError,
+  HeadShaCertificationError,
+} from "../src/branch-freshness.js";
 
 // QRM-4.0-branch-freshness [2], design §3.2/§3.5/§4. assertBranchFreshness proves
 // `merge_base(protectedBranch, prHeadSha) === tip(protectedBranch)` from CERTIFIED
@@ -159,8 +163,17 @@ describe("assertBranchFreshness - the call-order invariant (design §3.2, probe 
 
 describe("assertBranchFreshness - malformed prHeadSha throws with ZERO network calls (design §3.5 input, C5)", () => {
   // The input certification is the FIRST statement, before any network call. Each
-  // of these must throw an INPUT-layer error (TypeError), never a BranchFreshnessError,
-  // and never touch the network (sentinel call counters - the [1] Codex-BLOCK pattern).
+  // of these must throw the INPUT-layer HeadShaCertificationError, never a
+  // BranchFreshnessError, and never touch the network (sentinel call counters -
+  // the [1] Codex-BLOCK pattern).
+  //
+  // Fix delta (Codex NIT): `1n` and `Symbol()` are the load-bearing additions. The
+  // previous guard built its message with `JSON.stringify(prHeadSha)`, so `1n` made
+  // JSON.stringify throw its OWN native TypeError ("Do not know how to serialize a
+  // BigInt") BEFORE the intended error was constructed - the old
+  // `toBeInstanceOf(TypeError)` pin then passed on an UNRELATED error, a test
+  // weaker than it looked. Pinning the bespoke class AND asserting NOT-a-TypeError
+  // makes these FAIL if the guard regresses to a native throw.
   const badHeads: Record<string, unknown> = {
     "39-hex": "a".repeat(39),
     "uppercase-40": "A".repeat(40),
@@ -168,12 +181,15 @@ describe("assertBranchFreshness - malformed prHeadSha throws with ZERO network c
     null: null,
     junk: "not-a-sha",
     "branch-like (refs/heads/main)": "refs/heads/main",
+    "bigint (1n)": 1n,
+    symbol: Symbol("head"),
   };
   for (const [label, head] of Object.entries(badHeads)) {
-    it(`malformed prHeadSha (${label}) -> throws (input layer), ZERO network calls`, async () => {
+    it(`malformed prHeadSha (${label}) -> throws HeadShaCertificationError, ZERO network calls`, async () => {
       const { forge, rec } = freshnessForge({ mergeBase: SHA_FORK, tip: SHA_FORK });
-      const err = await caught(assertBranchFreshness(forge, "main", head as string));
-      expect(err).toBeInstanceOf(TypeError); // input layer, deliberately NOT freshness/forge
+      const err = await caught(assertBranchFreshness(forge, "main", head as unknown as string));
+      expect(err).toBeInstanceOf(HeadShaCertificationError); // input layer, bespoke class
+      expect(err).not.toBeInstanceOf(TypeError); // a NATIVE throw (e.g. BigInt) must NOT satisfy this
       expect(err).not.toBeInstanceOf(BranchFreshnessError);
       expect(rec.compare).toBe(0);
       expect(rec.getCommit).toBe(0);

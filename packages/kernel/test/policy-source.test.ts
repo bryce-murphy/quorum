@@ -143,6 +143,33 @@ describe("forgePolicySource - prHeadSha certification (Codex round 1, BLOCK)", (
     const source = await forgePolicySource(forge, "main", VALID_HEAD_SHA);
     expect(source.referenceRef).toBe(VALID_POLICY_SHA_A);
   });
+
+  // Fix delta (Codex NIT): the step-1 backstop certifyCommitSha built its
+  // diagnostic with `JSON.stringify(prHeadSha)`, so a BigInt head threw its OWN
+  // native TypeError (and a Symbol would throw on `${head}`) BEFORE PolicyReadError
+  // was constructed - a `.rejects.toThrow(PolicyReadError)` pin would then pass on
+  // an unrelated native throw with zero network calls. The safe diagnostic must
+  // raise PolicyReadError ITSELF, never a native throw, still before any network.
+  const exoticHeads: Record<string, unknown> = {
+    bigint: 1n,
+    symbol: Symbol("head"),
+  };
+  for (const [label, head] of Object.entries(exoticHeads)) {
+    it(`throws PolicyReadError (not a native TypeError) for a ${label} prHeadSha, before any network call`, async () => {
+      const { forge, counters } = forgeWithCounters({});
+      const err = await forgePolicySource(forge, "main", head as unknown as string).then(
+        () => {
+          throw new Error("expected a rejection, but resolved");
+        },
+        (e) => e,
+      );
+      expect(err).toBeInstanceOf(PolicyReadError);
+      expect(err).not.toBeInstanceOf(TypeError); // a NATIVE BigInt/Symbol throw must NOT satisfy this
+      expect(counters.compare).toBe(0);
+      expect(counters.getCommit).toBe(0);
+      expect(counters.getContent).toBe(0);
+    });
+  }
 });
 
 describe("forgePolicySource - merge_base_commit.sha certification (design amendment 1 / Codex round 1 CONCERN B)", () => {

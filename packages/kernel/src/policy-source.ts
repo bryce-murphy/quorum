@@ -27,7 +27,14 @@ function certifyCommitSha(value: unknown, label: string): string {
   // resolution inside every downstream `getFile`/`listFiles` call and silently
   // defeat the TOCTOU guarantee this function exists to provide.
   if (typeof value !== "string" || !FULL_COMMIT_SHA.test(value)) {
-    throw new PolicyReadError(`${label} is not a full 40-hex commit SHA: ${JSON.stringify(value)}`);
+    // Diagnostic must never throw during construction: `JSON.stringify(value)` on
+    // a BigInt throws its OWN native TypeError (and `${value}` throws on a Symbol)
+    // BEFORE PolicyReadError is built, which would preempt this fail-closed block
+    // with an unrelated native throw and let a `.rejects` pin pass on it. Stringify
+    // ONLY a confirmed string; show the typeof otherwise (same safe-diagnostic fix
+    // as assertBranchFreshness's HeadShaCertificationError guard).
+    const shown = typeof value === "string" ? JSON.stringify(value) : `<non-string: ${typeof value}>`;
+    throw new PolicyReadError(`${label} is not a full 40-hex commit SHA: ${shown}`);
   }
   return value;
 }

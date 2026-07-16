@@ -15,7 +15,7 @@ export { computeTierFloor } from "./tier/floor.js";
 export { resolveEnforcement } from "./enforcement.js";
 export type { PolicySource, EnforcementResult } from "./enforcement.js";
 export { forgePolicySource, PolicyReadError } from "./policy-source.js";
-export { assertBranchFreshness, BranchFreshnessError } from "./branch-freshness.js";
+export { assertBranchFreshness, BranchFreshnessError, HeadShaCertificationError } from "./branch-freshness.js";
 export {
   referencedFloor,
   isReferencedPath,

@@ -27,6 +27,30 @@ export class BranchFreshnessError extends Error {
 }
 
 /**
+ * The `prHeadSha` INPUT handed to `assertBranchFreshness` is not a full-lowercase-
+ * 40-hex commit identity (QRM-4.0-branch-freshness [2], design §3.5, the INPUT
+ * layer). Thrown as the FIRST statement, before any network call, so the sentinel
+ * zero-network-call tests are meaningful.
+ *
+ * A BESPOKE class, deliberately DISTINCT from `BranchFreshnessError` (a genuine
+ * freshness inequality) and from forge-layer `TreeParseError` (a malformed SHA the
+ * forge returned) - the three classes are not collapsed, so "the branch is stale"
+ * is never a misdiagnosis of "the caller handed us a bad head". It also replaces
+ * the previous bare `TypeError`: a `TypeError` pin was defeatable, because building
+ * the diagnostic with `JSON.stringify` on unvalidated input made a `BigInt` head
+ * throw its OWN native `TypeError` ("Do not know how to serialize a BigInt") BEFORE
+ * our error was constructed - satisfying a `toBeInstanceOf(TypeError)` assertion on
+ * an UNRELATED error with zero network calls. A dedicated class the diagnostic
+ * cannot accidentally impersonate closes that pin.
+ */
+export class HeadShaCertificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HeadShaCertificationError";
+  }
+}
+
+/**
  * Prove that `protectedBranch` is up to date relative to `prHeadSha` by
  * CERTIFIED commit-graph object identity (QRM-4.0-branch-freshness [2], design
  * §3.2). Returns both certified SHAs on success; THROWS to block on every other
@@ -78,12 +102,20 @@ export async function assertBranchFreshness(
   prHeadSha: string,
 ): Promise<{ mergeBaseSha: string; protectedTipSha: string }> {
   // Step 1 - input certification, BEFORE any network call (zero-network-call
-  // sentinel tests depend on this being the first statement). A malformed head
-  // is an INPUT-layer failure, deliberately NOT a BranchFreshnessError and NOT a
-  // forge-layer TreeParseError (design §3.5).
+  // sentinel tests depend on this being the first statement). A malformed head is
+  // an INPUT-layer failure: HeadShaCertificationError, deliberately NOT a
+  // BranchFreshnessError and NOT a forge-layer TreeParseError (design §3.5). The
+  // `||` short-circuits, so `FULL_COMMIT_SHA.test` is only ever reached for an
+  // actual string (a raw `.test(Symbol())` would itself throw). The diagnostic
+  // stringifies ONLY a confirmed string - never `JSON.stringify`/`${}` on the raw
+  // input, either of which throws a NATIVE error on a BigInt/Symbol BEFORE our
+  // error is built, defeating the class pin - and shows the typeof otherwise, so
+  // message construction can never throw.
   if (typeof prHeadSha !== "string" || !FULL_COMMIT_SHA.test(prHeadSha)) {
-    throw new TypeError(
-      `assertBranchFreshness: prHeadSha is not a full 40-hex commit SHA: ${JSON.stringify(prHeadSha)}`,
+    const shown =
+      typeof prHeadSha === "string" ? JSON.stringify(prHeadSha) : `<non-string: ${typeof prHeadSha}>`;
+    throw new HeadShaCertificationError(
+      `assertBranchFreshness: prHeadSha is not a full 40-hex commit SHA: ${shown}`,
     );
   }
 
