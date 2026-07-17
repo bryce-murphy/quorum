@@ -1,7 +1,7 @@
 # QRM-4.0-branch-freshness — task review record
 
 **Task:** Mechanical branch-freshness (QRM-4.0 prerequisite **[2]**) — consume "require branches up to date before merge" as an unspoofable forge signal (certified `merge_base(protectedBranch, prHeadSha) === tip(protectedBranch)`), closing QRM-3.2's stale-tightening residual, and make `forgePolicySource` freshness-bound.
-**Merge base:** `95df5e9` (main). **Branch:** `qrm-4.0-branch-freshness`. **Draft PR:** [#24](https://github.com/bryce-murphy/quorum/pull/24) (stays **draft** — Architect re-gate + Codex focused re-review pending).
+**Merge base:** `95df5e9` (main). **Branch:** `qrm-4.0-branch-freshness` (deleted post-merge). **Merged:** [#24](https://github.com/bryce-murphy/quorum/pull/24), squash `a9952bd`, 2026-07-17, merged by Bryce Murphy (Owner). **Loop completed before merge:** Architect re-gate from a fresh clone, then Codex focused re-review of the fix delta returned CLEAR (confirmed 8bb19e0^ === 86c5dbb, both NIT fixes closed, BLOCK completion-claim correction not overclaimed). Per-task manifest deliberately kept planned: the enforcement half ([0] strict required-check) is unshipped, so [2] is NOT satisfied (see section 2).
 **Tier:** T3 (trust boundary — freshness is a precondition of policy provenance; a false-fresh pass re-opens the old-permissive-policy downgrade vector). **Cross-architect design review:** GPT (PROCEED-TO-PROTOTYPE, five amendments, all accepted — design §6). **Cross-family red-team:** Codex.
 **Builder (kernel [2]):** Opus 4.8. **Fix-delta builder (this record):** Opus 4.8, effort **high** (advisory routing was xhigh; reported here because effort is not attestable from committed bytes).
 
