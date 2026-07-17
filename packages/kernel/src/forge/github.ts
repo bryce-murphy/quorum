@@ -64,6 +64,18 @@ export class GitHubForge implements ForgeAdapter {
   private readonly mergeBase: string | undefined;
 
   constructor(opts: GitHubForgeOptions) {
+    // QRM-4.0-branch-freshness [2], design §3.2/§8 - LOAD-BEARING, do not "fix"
+    // away: this is plain `@octokit/rest` with NO retry plugin, NO throttling
+    // plugin, and NO request hook. `assertBranchFreshness` reads the merge base
+    // FIRST and the protected tip SECOND, and that observed order must never be
+    // reversed OR blurred. A per-read auto-retry (e.g. `@octokit/plugin-retry`)
+    // could re-issue one read inside that sequence and, on an eventually-consistent
+    // replica, serve a stale-but-well-formed tip that spuriously equals the merge
+    // base -> a FALSE-FRESH pass, the one outcome freshness must never produce.
+    // The no-retry property holds by default today; this comment exists so a future
+    // unrelated change (adding a retry plugin for flaky-network reasons) cannot
+    // silently remove it. On transient failure: fail closed, or re-run
+    // `assertBranchFreshness` WHOLE - never retry a single read in isolation.
     this.api = opts.octokit ?? new Octokit({ auth: opts.token });
     this.owner = opts.owner;
     this.repo = opts.repo;
@@ -144,6 +156,44 @@ export class GitHubForge implements ForgeAdapter {
       if (isNotFound(err)) return absent();
       throw err;
     }
+  }
+
+  /**
+   * Resolve `ref` to its tip COMMIT SHA (QRM-4.0-branch-freshness [2], design
+   * §3.1) via `repos.getCommit(ref).data.sha`. The returned sha is CERTIFIED
+   * (full lowercase 40-hex) before this method hands it back - the same
+   * discipline `resolveMergeBase` applies to `merge_base_commit.sha` - so both
+   * sides of a freshness equality are certified symmetrically. A present-but-
+   * malformed sha (missing / non-string / short / branch-like / uppercase /
+   * wrong-length / non-hex) is malformed first-party data and throws
+   * `TreeParseError`. A 404 (ref unresolvable) -> `absent` (absence is never
+   * freshness, per adapter.ts:7).
+   *
+   * NOT built on `resolveTreeSha` (design §3.1): that method is `private` and,
+   * critically, its `commitSha` guard is `typeof === "string"` only - shape-
+   * checked, NOT 40-hex certified. Reusing it would put an uncertified SHA on
+   * one side of an equality whose other side (`resolveMergeBase`) is certified
+   * by construction, and asymmetric certification across an equality check is
+   * exactly where an under-floor hides. Strengthening `resolveTreeSha` in place
+   * would instead change a shipped contract with existing callers (`compare`,
+   * `listFiles`). A separate certified resolver keeps both sides symmetric and
+   * touches no shipped contract.
+   */
+  async resolveRefCommit(ref: string): Promise<ForgeResponse<string>> {
+    let sha: unknown;
+    try {
+      const res = await this.api.repos.getCommit({ owner: this.owner, repo: this.repo, ref });
+      sha = (res.data as { sha?: unknown }).sha;
+    } catch (err) {
+      if (isNotFound(err)) return absent();
+      throw err;
+    }
+    if (typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha)) {
+      throw new TreeParseError(
+        `resolveRefCommit(${JSON.stringify(ref)}): commit sha is not a full 40-hex commit SHA: ${JSON.stringify(sha)}`,
+      );
+    }
+    return ok(sha);
   }
 
   async listFiles(ref: string): Promise<ForgeResponse<readonly string[]>> {

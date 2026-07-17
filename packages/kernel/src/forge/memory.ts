@@ -1,5 +1,6 @@
 import { sha256 } from "../hash.js";
 import { mergeReviewEndpoints } from "./review-merge.js";
+import { TreeParseError } from "./tree-diff.js";
 import {
   absent,
   ok,
@@ -27,6 +28,9 @@ export interface MemoryForgeData {
   files?: Record<string, Record<string, string>>;
   /** Shas that are resolvable AND reachable from head. */
   commits?: string[];
+  /** ref -> tip commit sha (QRM-4.0-branch-freshness [2]). Feeds resolveRefCommit;
+   *  a ref not listed here resolves to `absent`. */
+  refs?: Record<string, string>;
   prs?: Record<number, { headRef: string; headSha: string }>;
   issues?: Record<number, { author: string }>;
   reviews?: Record<number, ReviewEndpoints>;
@@ -66,6 +70,25 @@ export class MemoryForge implements ForgeAdapter {
   async resolveCommit(sha: string): Promise<ForgeResponse<CommitInfo>> {
     if (this.blocked("resolveCommit")) return unsupported();
     return this.data.commits?.includes(sha) ? ok({ sha }) : absent();
+  }
+
+  async resolveRefCommit(ref: string): Promise<ForgeResponse<string>> {
+    if (this.blocked("resolveRefCommit")) return unsupported();
+    const sha = this.data.refs?.[ref];
+    if (sha === undefined) return absent();
+    // Certify the fixture sha as full-lowercase-40-hex, exactly as GitHubForge and
+    // LocalGitForge do (QRM-4.0-branch-freshness [2], design §3.1). The
+    // ForgeAdapter.resolveRefCommit contract promises a CERTIFIED 40-hex identity
+    // on both sides of a freshness equality; a MemoryForge fixture returning bytes
+    // unchecked made that a false contract - it would seed an uncertified SHA into
+    // an equality the fixture corpus is meant to exercise honestly. Malformed
+    // first-party data throws the forge-layer error, never `ok`.
+    if (!/^[0-9a-f]{40}$/.test(sha)) {
+      throw new TreeParseError(
+        `resolveRefCommit(${JSON.stringify(ref)}): fixture sha is not a full 40-hex commit SHA: ${JSON.stringify(sha)}`,
+      );
+    }
+    return ok(sha);
   }
 
   async getPR(n: number): Promise<ForgeResponse<PrInfo>> {

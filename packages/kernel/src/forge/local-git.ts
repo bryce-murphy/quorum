@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { sha256 } from "../hash.js";
 import { parseRawDiff } from "../diff.js";
+import { TreeParseError } from "./tree-diff.js";
 import {
   absent,
   ok,
@@ -119,6 +120,26 @@ export class LocalGitForge implements ForgeAdapter {
       return absent();
     }
     return ok({ sha });
+  }
+
+  async resolveRefCommit(ref: string): Promise<ForgeResponse<string>> {
+    // QRM-4.0-branch-freshness [2], design §3.1: the local analog of
+    // GitHubForge.resolveRefCommit - resolve a ref to its certified 40-hex tip
+    // commit sha. `^{commit}` peels tags to the underlying commit; `--verify
+    // --quiet` exits non-zero silently on a bad ref -> null -> absent. A
+    // resolvable ref whose rev-parse output is not full lowercase 40-hex throws
+    // (fail closed), keeping this side of a freshness equality certified exactly
+    // like the forge side. This is honest for LocalGitForge (plain git DOES
+    // resolve refs), not `unsupported`.
+    const out = this.git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+    if (out === null) return absent();
+    const sha = out.trim();
+    if (!/^[0-9a-f]{40}$/.test(sha)) {
+      throw new TreeParseError(
+        `resolveRefCommit(${JSON.stringify(ref)}): rev-parse returned a non-40-hex sha: ${JSON.stringify(sha)}`,
+      );
+    }
+    return ok(sha);
   }
 
   async getPR(): Promise<ForgeResponse<PrInfo>> {

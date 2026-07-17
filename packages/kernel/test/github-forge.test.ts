@@ -358,6 +358,55 @@ describe("GitHubForge.resolveMergeBase - output certification (QRM-4.0-policy-re
   });
 });
 
+// QRM-4.0-branch-freshness [2], design §3.1: resolveRefCommit resolves a ref to
+// its tip commit sha via repos.getCommit(ref).data.sha, CERTIFIED full-lowercase-
+// 40-hex by construction - symmetric with resolveMergeBase, so both sides of a
+// freshness equality are certified. A present-but-malformed sha throws
+// TreeParseError; a 404 -> absent. It is NOT built on the private resolveTreeSha,
+// whose commitSha guard is typeof-string only (shape-checked, not 40-hex certified).
+function refCommitOctokit(shaByRef: Record<string, unknown>): Octokit {
+  return {
+    repos: {
+      getCommit: async ({ ref }: { ref: string }) => {
+        if (!(ref in shaByRef)) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return { data: { sha: shaByRef[ref] } };
+      },
+    },
+  } as unknown as Octokit;
+}
+const refCommitForge = (shaByRef: Record<string, unknown>): GitHubForge =>
+  new GitHubForge({ token: "x", owner: "o", repo: "r", head: "HEAD", octokit: refCommitOctokit(shaByRef) });
+
+describe("GitHubForge.resolveRefCommit - certified tip resolution (QRM-4.0-branch-freshness [2])", () => {
+  const badShapes: Record<string, unknown> = {
+    missing: undefined,
+    "non-string": 12345,
+    short: "abc123",
+    "branch-like (main)": "main",
+    "branch-like (refs/heads/main)": "refs/heads/main",
+    uppercase: "A".repeat(40),
+    "wrong-length (39)": "a".repeat(39),
+    "wrong-length (41)": "a".repeat(41),
+    "non-hex": "g".repeat(40),
+  };
+  for (const [label, sha] of Object.entries(badShapes)) {
+    it(`throws when the returned commit sha is ${label}`, async () => {
+      await expect(refCommitForge({ main: sha }).resolveRefCommit("main")).rejects.toThrow(/40-hex/);
+    });
+  }
+
+  it("returns the certified sha wrapped in 'ok' on a well-formed response", async () => {
+    const sha = "c".repeat(40);
+    const res = await refCommitForge({ main: sha }).resolveRefCommit("main");
+    expect(res).toEqual({ kind: "ok", value: sha });
+  });
+
+  it("returns absent when the ref is unresolvable (404), not a certification throw", async () => {
+    const res = await refCommitForge({}).resolveRefCommit("nope");
+    expect(res.kind).toBe("absent");
+  });
+});
+
 describe("GitHubForge.listFiles - authenticated tree listing (QRM-4.0 [11])", () => {
   it("returns the blob+commit leaf set (directories filtered), matching ls-tree -r", async () => {
     const res = await treeForge({
