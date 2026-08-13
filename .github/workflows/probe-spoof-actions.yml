@@ -8,9 +8,7 @@ name: probe-spoof-actions
 # and is deleted with the branch. It must never reach main.
 
 on:
-  push:
-    branches:
-      - "probe/**"
+  workflow_dispatch:
 
 permissions:
   checks: write
