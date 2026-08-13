@@ -1,0 +1,33 @@
+name: probe-spoof-actions
+
+# THROWAWAY PROBE - QRM-4.0 [3] section 9.2, row 1.
+# Deliberate spoof attempt: posts a check run named quorum-verify using the
+# ambient GITHUB_TOKEN (identity: GitHub Actions app, integration_id 15368).
+# The probe ruleset binds quorum-verify to integration_id 4584239, so this
+# MUST NOT satisfy the requirement. This file exists only on probe/head-9-2
+# and is deleted with the branch. It must never reach main.
+
+on:
+  push:
+    branches:
+      - "probe/**"
+
+permissions:
+  checks: write
+
+jobs:
+  spoof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post check run under the required context name
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/check-runs \
+            --method POST \
+            -f name=quorum-verify \
+            -f head_sha=${{ github.sha }} \
+            -f status=completed \
+            -f conclusion=success \
+            -f output[title]="Spoof attempt" \
+            -f output[summary]="Posted by GitHub Actions, not the quorum-gate App."
